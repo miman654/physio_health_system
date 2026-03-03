@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.env
+venv/
+# Flutter
+.flutter-plugins
+.flutter-plugins-dependencies
+build/
+ios/Pods/
+android/.gradle/
+# 通用
+.vscode/
+*.log
+physio_data.db  # 数据库文件（后期可忽略，开发期保留）
