@@ -1,0 +1,1 @@
+// Permission utility placeholder
