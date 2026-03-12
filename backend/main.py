@@ -27,8 +27,8 @@ app.add_middleware(
 # 注册路由 把不同模块的路由注册到主应用
 # tags参数： 在API文档中分组显示
 app.include_router(auth_api.router, prefix="/auth", tags=["用户鉴权"])
-# app.include_router(data_api.router, prefix="/data", tags=["生理数据"])
-# app.include_router(ai_api.router, prefix="/ai", tags=["AI服务"])
+app.include_router(data_api.router, prefix="/data", tags=["生理数据"])
+app.include_router(ai_api.router, prefix="/ai", tags=["AI服务"])
 
 # WebSocket实时推送（硬件→后端→APP）
 active_connections: list[WebSocket] = [] # 存储所有活跃的WebSocket连接

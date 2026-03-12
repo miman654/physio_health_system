@@ -2,6 +2,7 @@
 
 import sqlite3
 import datetime
+import hashlib
 
 def init_db():
     # 连接数据库（不存在则创建）
@@ -64,10 +65,11 @@ def init_db():
 
     # 插入测试用户（test/123456）
     try:
+        hashed_password = hashlib.sha256("123456".encode()).hexdigest()
         cursor.execute('''
         INSERT INTO users (username, password, age, weight, create_time) 
         VALUES (?, ?, ?, ?, ?)
-        ''', ("test", "123456", 25, 60.0, datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        ''', ("test", hashed_password, 25, 60.0, datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
         print("测试用户创建成功：test/123456")
     except sqlite3.IntegrityError:
         print("测试用户已存在")
