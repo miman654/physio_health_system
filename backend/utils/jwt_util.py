@@ -3,15 +3,17 @@ import jwt
 from datetime import datetime, timedelta
 from config.settings import SECRET_KEY
 
+
 # 生成token
 def generate_token(user_id: int, username: str):
     payload = {
         "user_id": user_id,
         "username": username,
-        "exp": datetime.utcnow() + timedelta(hours=24)  # 24小时过期
+        "exp": datetime.utcnow() + timedelta(hours=240),  # 240小时过期
     }
     token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
     return token
+
 
 # 验证token
 def verify_token(token: str):

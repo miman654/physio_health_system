@@ -1,17 +1,36 @@
-#后端入口文件
+# 后端入口文件
+import os
+import sys
+
 from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect
+
 # FastAPI：主框架类
 # Depends：依赖注入（用于获取数据库连接等）
 # HTTPException：返回HTTP错误
 # WebSocket：实时通信支持
 # WebSocketDisconnect：处理断开连接
-from fastapi.middleware.cors import CORSMiddleware # 跨域中间件，解决Flutter请求被浏览器拦截的问题
+from fastapi.middleware.cors import (
+    CORSMiddleware,
+)  # 跨域中间件，解决Flutter请求被浏览器拦截的问题
 import uvicorn  # ASGI服务器，用于运行FastAPI应用
+
+# 确保项目根目录在 sys.path 首位（避免误用 venv 目录中同名模块）
+sys.path.insert(0, os.path.dirname(__file__))
+
 from api import auth_api, data_api, ai_api
 from config.settings import PORT
+from db_init import init_db
 
 # 初始化APP
 app = FastAPI(title="生理健康管理系统后端", version="1.0")
+
+
+# 启动时初始化数据库（如果还没创建表则会自动创建）
+@app.on_event("startup")
+async def startup_event():
+    init_db()
+
+
 # 根据你的代码生成OpenAPI规范（JSON格式）
 # 提供Swagger UI（漂亮页面）
 
@@ -31,7 +50,8 @@ app.include_router(data_api.router, prefix="/data", tags=["生理数据"])
 app.include_router(ai_api.router, prefix="/ai", tags=["AI服务"])
 
 # WebSocket实时推送（硬件→后端→APP）
-active_connections: list[WebSocket] = [] # 存储所有活跃的WebSocket连接
+active_connections: list[WebSocket] = []  # 存储所有活跃的WebSocket连接
+
 
 # WebSocket端点定义，路径参数user_id用于区分不同用户的连接
 @app.websocket("/ws/{user_id}")
@@ -49,6 +69,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: int):
                 await connection.send_json(data)
     except WebSocketDisconnect:
         active_connections.remove(websocket)
+
 
 # 启动服务
 if __name__ == "__main__":

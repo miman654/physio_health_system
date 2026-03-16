@@ -23,3 +23,4 @@ websockets==12.0          # WebSocket support for real-time data push
 # sqlalchemy==2.0.23      # Database ORM (uncomment when using databases)
 # aiomysql==0.2.0         # Async MySQL driver (uncomment when using MySQL)
 # httpx==0.25.0           # HTTP client for calling external APIs
+requests==2.31.0          # HTTP client for calling external APIs
