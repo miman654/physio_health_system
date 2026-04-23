@@ -2,10 +2,17 @@
 import 'package:permission_handler/permission_handler.dart';
 import 'package:get/get.dart';
 import 'package:flutter/material.dart';
+import 'dart:io' show Platform;
 
 class PermissionUtil {
   // 申请健康管理所需基础权限（蓝牙+位置+存储）
   static Future<bool> requestBasePermissions() async {
+    // 在Web平台上，权限处理不同
+    if (GetPlatform.isWeb) {
+      debugPrint("Web平台：权限请求已跳过");
+      return true;
+    }
+
     Get.snackbar("提示", "正在申请必要权限...", colorText: Colors.white);
     // 申请权限组
     Map<Permission, PermissionStatus> statuses = await [
@@ -36,6 +43,10 @@ class PermissionUtil {
 
   // 检查单个权限（按需申请）
   static Future<bool> checkSinglePermission(Permission permission) async {
+    if (GetPlatform.isWeb) {
+      return true;
+    }
+
     PermissionStatus status = await permission.status;
     if (status == PermissionStatus.denied ||
         status == PermissionStatus.permanentlyDenied) {

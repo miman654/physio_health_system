@@ -5,6 +5,8 @@ import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import '../component/bottom_tab_bar.dart';
 import '../api/api_service.dart';
+import '../controller/auth_controller.dart';
+import '../controller/data_controller.dart';
 
 class SportPage extends StatefulWidget {
   const SportPage({super.key});
@@ -15,46 +17,55 @@ class SportPage extends StatefulWidget {
 
 class _SportPageState extends State<SportPage> {
   final ApiService _apiService = ApiService();
+  final AuthController _authController = Get.find<AuthController>();
+  final DataController _dataController = Get.find<DataController>();
 
   final TextEditingController startController = TextEditingController();
   final TextEditingController endController = TextEditingController();
-  final TextEditingController heartRateController = TextEditingController();
-  final TextEditingController calorieController = TextEditingController();
 
   String sportType = '跑步';
+  final List<String> sportTypes = [
+    '步行',
+    '快走',
+    '跑步',
+    '快跑',
+    '骑行',
+    '游泳',
+    '瑜伽',
+    '健身'
+  ];
 
-  bool loading = false;
-  List<Map<String, dynamic>> records = [];
+  bool loading = false; // 用于上传操作的loading
 
   @override
   void initState() {
     super.initState();
-    fetchSportRecords();
+    fetchSportRecords(); // 初始化时获取数据
+  }
+
+  @override
+  void dispose() {
+    startController.dispose();
+    endController.dispose();
+    super.dispose();
   }
 
   Future<void> fetchSportRecords() async {
     setState(() {
       loading = true;
     });
-    final resp = await _apiService.querySportRecord(1, limit: 10);
+    await _dataController.querySportRecord(limit: 10);
     setState(() {
       loading = false;
-      if (resp["code"] == 200) {
-        records = List<Map<String, dynamic>>.from(resp["data"]);
-      } else {
-        records = [];
-        Get.snackbar('查询失败', resp["msg"] ?? '未知错误');
-      }
     });
   }
 
   Future<void> uploadSportRecord() async {
     final start = startController.text;
     final end = endController.text;
-    final hr = int.tryParse(heartRateController.text);
-    final calorie = double.tryParse(calorieController.text);
-    if (start.isEmpty || end.isEmpty || hr == null || calorie == null) {
-      Get.snackbar('提示', '请填写全部必填项');
+
+    if (start.isEmpty || end.isEmpty) {
+      Get.snackbar('提示', '请填写运动开始和结束时间');
       return;
     }
 
@@ -62,24 +73,37 @@ class _SportPageState extends State<SportPage> {
       loading = true;
     });
 
-    final resp = await _apiService.uploadSportRecord({
-      'user_id': 1,
+    // 调用上传接口并获取返回值
+    var result = await _dataController.uploadSportRecord({
+      'user_id': _authController.userId.value,
       'sport_type': sportType,
       'sport_start': _formatWithSeconds(start),
       'sport_end': _formatWithSeconds(end),
-      'avg_heart_rate': hr,
-      'calorie': calorie,
     });
 
     setState(() {
       loading = false;
+      // 清空表单
+      startController.clear();
+      endController.clear();
     });
 
-    if (resp["code"] == 200) {
-      Get.snackbar('上传成功', '运动记录已上传');
-      fetchSportRecords();
-    } else {
-      Get.snackbar('上传失败', resp["msg"] ?? '未知错误');
+    // 如果上传成功，输出卡路里
+    if (result != null && result["code"] == 200) {
+      final data = result["data"];
+      if (data != null && data["calorie"] != null) {
+        // 在控制台输出卡路里
+        debugPrint('本次运动消耗卡路里: ${data["calorie"]} 千卡');
+
+        // 也可以显示一个提示框
+        Get.snackbar(
+          '运动消耗',
+          '本次运动消耗了 ${data["calorie"]} 千卡',
+          backgroundColor: Colors.green.withOpacity(0.8),
+          colorText: Colors.white,
+          duration: const Duration(seconds: 3),
+        );
+      }
     }
   }
 
@@ -88,6 +112,10 @@ class _SportPageState extends State<SportPage> {
       final dt = DateFormat('yyyy-MM-dd HH:mm').parse(value);
       return DateFormat('yyyy-MM-dd HH:mm:ss').format(dt);
     } catch (_) {
+      try {
+        final dt = DateFormat('yyyy-MM-dd HH:mm:ss').parse(value);
+        return DateFormat('yyyy-MM-dd HH:mm:ss').format(dt);
+      } catch (_) {}
       return value;
     }
   }
@@ -129,138 +157,40 @@ class _SportPageState extends State<SportPage> {
     controller.text = DateFormat('yyyy-MM-dd HH:mm').format(selected);
   }
 
-  Widget buildTextField(TextEditingController controller, String label,
-      {TextInputType inputType = TextInputType.text}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: TextField(
-        controller: controller,
-        keyboardType: inputType,
-        style: const TextStyle(color: Colors.white),
-        decoration: InputDecoration(
-          labelText: label,
-          labelStyle: const TextStyle(color: Colors.white70),
-          enabledBorder: OutlineInputBorder(
-            borderSide: const BorderSide(color: Colors.white24),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderSide: const BorderSide(color: Colors.yellow),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          fillColor: Colors.white.withOpacity(0.05),
-          filled: true,
-        ),
-      ),
-    );
+  String _formatDateTime(String? raw) {
+    if (raw == null || raw.isEmpty) return '';
+    try {
+      final dt = DateFormat('yyyy-MM-dd HH:mm:ss').parse(raw);
+      return DateFormat('MM-dd HH:mm').format(dt);
+    } catch (_) {
+      try {
+        final dt = DateFormat('yyyy-MM-dd HH:mm').parse(raw);
+        return DateFormat('MM-dd HH:mm').format(dt);
+      } catch (_) {
+        return raw;
+      }
+    }
   }
 
-  Widget buildRecordItem(Map<String, dynamic> record) {
-    final start = record['sport_start']?.toString() ?? '';
-    final end = record['sport_end']?.toString() ?? '';
-    final type = record['sport_type']?.toString() ?? '';
-    final hr = record['avg_heart_rate']?.toString() ?? '--';
-    final calorie = record['calorie']?.toString() ?? '--';
+  Widget _buildPhysioChip(
+      String label, String value, IconData icon, Color color) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(12),
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(4),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Text('类型: $type', style: const TextStyle(color: Colors.white)),
-          const SizedBox(height: 4),
-          Text('开始: $start', style: const TextStyle(color: Colors.white)),
-          Text('结束: $end', style: const TextStyle(color: Colors.white)),
-          const SizedBox(height: 4),
-          Text('心率: $hr', style: const TextStyle(color: Colors.white70)),
-          Text('热量: $calorie kcal',
-              style: const TextStyle(color: Colors.white70)),
-        ],
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          Image.asset(
-            'images/sport.png',
-            fit: BoxFit.cover,
-          ),
-          Container(color: Colors.black.withOpacity(0.25)),
-          SafeArea(
-            child: SingleChildScrollView(
-              child: Column(
-                children: [
-                  const SizedBox(height: 24),
-                  const Text(
-                    '运动记录',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Card(
-                    color: Colors.white.withOpacity(0.12),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(18)),
-                    margin:
-                        const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('上传运动记录',
-                              style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 12),
-                          buildDropdown(),
-                          buildDateTimeField(startController, '开始时间'),
-                          buildDateTimeField(endController, '结束时间'),
-                          buildTextField(heartRateController, '平均心率',
-                              inputType: TextInputType.number),
-                          buildTextField(calorieController, '消耗卡路里',
-                              inputType: TextInputType.number),
-                          const SizedBox(height: 12),
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.yellow,
-                                foregroundColor: Colors.black,
-                                shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12)),
-                              ),
-                              onPressed: loading ? null : uploadSportRecord,
-                              child: loading
-                                  ? const CircularProgressIndicator()
-                                  : const Text('上传'),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  buildRecordsSection(),
-                  const SizedBox(height: 24),
-                ],
-              ),
-            ),
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 2),
+          Text(
+            '$label $value',
+            style: TextStyle(fontSize: 11, color: color),
           ),
         ],
       ),
-      bottomNavigationBar: const BottomTabBar(currentIndex: 1),
     );
   }
 
@@ -269,35 +199,128 @@ class _SportPageState extends State<SportPage> {
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.05),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colors.white24),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        child: DropdownButton<String>(
-          value: sportType,
-          dropdownColor: Colors.black87,
-          isExpanded: true,
-          underline: const SizedBox(),
-          style: const TextStyle(color: Colors.white),
-          items: const [
-            DropdownMenuItem(value: '跑步', child: Text('跑步')),
-            DropdownMenuItem(value: '步行', child: Text('步行')),
-            DropdownMenuItem(value: '骑行', child: Text('骑行')),
+          gradient: LinearGradient(
+            colors: [
+              Colors.yellow.withOpacity(0.15),
+              Colors.orange.withOpacity(0.1)
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(color: Colors.yellow.withOpacity(0.5), width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.yellow.withOpacity(0.1),
+              blurRadius: 8,
+              spreadRadius: 1,
+            ),
           ],
-          onChanged: (value) {
-            if (value != null) {
-              setState(() {
-                sportType = value;
-              });
-            }
-          },
+        ),
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<String>(
+            value: sportType,
+            isExpanded: true,
+            dropdownColor: const Color(0xFF2C2344),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+            ),
+            icon: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: Colors.yellow.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.arrow_drop_down,
+                  color: Colors.yellow, size: 28),
+            ),
+            items: sportTypes.map((type) {
+              IconData iconData;
+              Color iconColor;
+
+              // 根据运动类型选择不同的图标
+              switch (type) {
+                case '步行':
+                  iconData = Icons.directions_walk;
+                  iconColor = Colors.green;
+                  break;
+                case '快走':
+                  iconData = Icons.directions_walk;
+                  iconColor = Colors.lightGreen;
+                  break;
+                case '跑步':
+                  iconData = Icons.directions_run;
+                  iconColor = Colors.orange;
+                  break;
+                case '快跑':
+                  iconData = Icons.run_circle;
+                  iconColor = Colors.deepOrange;
+                  break;
+                case '骑行':
+                  iconData = Icons.directions_bike;
+                  iconColor = Colors.blue;
+                  break;
+                case '游泳':
+                  iconData = Icons.pool;
+                  iconColor = Colors.lightBlue;
+                  break;
+                case '瑜伽':
+                  iconData = Icons.self_improvement;
+                  iconColor = Colors.purple;
+                  break;
+                case '健身':
+                  iconData = Icons.fitness_center;
+                  iconColor = Colors.red;
+                  break;
+                default:
+                  iconData = Icons.sports;
+                  iconColor = Colors.yellow;
+              }
+
+              return DropdownMenuItem(
+                value: type,
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: iconColor.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(iconData, color: iconColor, size: 20),
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      type,
+                      style: TextStyle(
+                        color:
+                            sportType == type ? Colors.yellow : Colors.white70,
+                        fontWeight: sportType == type
+                            ? FontWeight.bold
+                            : FontWeight.normal,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
+            onChanged: (value) {
+              if (value != null) {
+                setState(() {
+                  sportType = value;
+                });
+              }
+            },
+          ),
         ),
       ),
     );
   }
 
-  Widget buildDateTimeField(TextEditingController controller, String label) {
+  Widget buildDateTimeField(
+      TextEditingController controller, String label, IconData icon) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: TextField(
@@ -307,7 +330,8 @@ class _SportPageState extends State<SportPage> {
         decoration: InputDecoration(
           labelText: label,
           labelStyle: const TextStyle(color: Colors.white70),
-          suffixIcon: const Icon(Icons.calendar_today, color: Colors.white70),
+          prefixIcon: Icon(icon, color: Colors.yellow),
+          suffixIcon: const Icon(Icons.calendar_today, color: Colors.yellow),
           enabledBorder: OutlineInputBorder(
             borderSide: const BorderSide(color: Colors.white24),
             borderRadius: BorderRadius.circular(10),
@@ -324,6 +348,132 @@ class _SportPageState extends State<SportPage> {
     );
   }
 
+  Widget buildRecordItem(Map<String, dynamic> record) {
+    final start = _formatDateTime(record['sport_start']?.toString());
+    final end = _formatDateTime(record['sport_end']?.toString());
+    final type = record['sport_type']?.toString() ?? '';
+    final hr = record['avg_heart_rate']?.toString() ?? '--';
+    final spo2 = record['avg_spo2']?.toString() ?? '--';
+    final temp = record['avg_temp']?.toString() ?? '--';
+    final calorie = record['calorie']?.toString() ?? '--';
+    final suggestion = record['suggestion']?.toString() ?? '';
+
+    // 计算运动时长
+    String durationText = '';
+    if (record['sport_start'] != null && record['sport_end'] != null) {
+      try {
+        final startTime =
+            DateFormat('yyyy-MM-dd HH:mm:ss').parse(record['sport_start']);
+        final endTime =
+            DateFormat('yyyy-MM-dd HH:mm:ss').parse(record['sport_end']);
+        final minutes = endTime.difference(startTime).inMinutes;
+        if (minutes > 0) {
+          durationText = '$minutes分钟';
+        }
+      } catch (_) {}
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withOpacity(0.1)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 运动类型和时间
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: Colors.yellow.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      type,
+                      style: const TextStyle(
+                        color: Colors.yellow,
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  if (durationText.isNotEmpty)
+                    Text(
+                      durationText,
+                      style:
+                          const TextStyle(color: Colors.white70, fontSize: 12),
+                    ),
+                ],
+              ),
+              Text(
+                '$start - $end',
+                style: const TextStyle(color: Colors.white54, fontSize: 11),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // 生理指标
+          Row(
+            children: [
+              _buildPhysioChip('心率', hr, Icons.favorite, Colors.red),
+              const SizedBox(width: 8),
+              _buildPhysioChip('血氧', '$spo2%', Icons.bloodtype, Colors.blue),
+              const SizedBox(width: 8),
+              _buildPhysioChip(
+                  '体温', '$temp°C', Icons.thermostat, Colors.orange),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // 卡路里
+          Row(
+            children: [
+              Icon(Icons.local_fire_department,
+                  size: 14, color: Colors.orange.shade300),
+              const SizedBox(width: 4),
+              Text(
+                '消耗: $calorie 千卡',
+                style: const TextStyle(color: Colors.white70, fontSize: 13),
+              ),
+            ],
+          ),
+          if (suggestion.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.green.withOpacity(0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.lightbulb, color: Colors.green, size: 16),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      suggestion,
+                      style:
+                          const TextStyle(color: Colors.white70, fontSize: 12),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget buildRecordsSection() {
     return Card(
       color: Colors.white.withOpacity(0.12),
@@ -334,21 +484,193 @@ class _SportPageState extends State<SportPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('运动记录',
-                style: TextStyle(
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.yellow.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.history, color: Colors.yellow),
+                ),
+                const SizedBox(width: 12),
+                const Text(
+                  '运动记录',
+                  style: TextStyle(
                     color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            if (loading)
-              const Center(child: CircularProgressIndicator())
-            else if (records.isEmpty)
-              const Text('暂无记录', style: TextStyle(color: Colors.white70))
-            else
-              ...records.map((record) => buildRecordItem(record)),
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            // 使用 Obx 监听数据变化
+            Obx(() {
+              if (_dataController.isLoading.value && loading) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              final records = _dataController.sportDataList;
+
+              if (records.isEmpty) {
+                return Container(
+                  padding: const EdgeInsets.all(24),
+                  alignment: Alignment.center,
+                  child: const Column(
+                    children: [
+                      Icon(Icons.sports_score, size: 48, color: Colors.white24),
+                      SizedBox(height: 8),
+                      Text(
+                        '暂无运动记录',
+                        style: TextStyle(color: Colors.white38),
+                      ),
+                    ],
+                  ),
+                );
+              }
+
+              return ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: records.length,
+                itemBuilder: (context, index) {
+                  return buildRecordItem(records[index]);
+                },
+              );
+            }),
           ],
         ),
       ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.asset(
+            'assets/images/sport.png',
+            fit: BoxFit.cover,
+          ),
+          Container(color: Colors.black.withOpacity(0.25)),
+          SafeArea(
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  const SizedBox(height: 24),
+                  const Text(
+                    '运动记录',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  // 上传表单卡片
+                  Card(
+                    color: Colors.white.withOpacity(0.12),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18)),
+                    margin:
+                        const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: Colors.yellow.withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(Icons.upload,
+                                    color: Colors.yellow),
+                              ),
+                              const SizedBox(width: 12),
+                              const Text(
+                                '上传运动记录',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          buildDropdown(),
+                          buildDateTimeField(
+                              startController, '开始时间', Icons.play_arrow),
+                          buildDateTimeField(endController, '结束时间', Icons.stop),
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.yellow.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                  color: Colors.yellow.withOpacity(0.3)),
+                            ),
+                            child: const Row(
+                              children: [
+                                Icon(Icons.info_outline,
+                                    color: Colors.yellow, size: 18),
+                                SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    '系统会根据您的运动类型和时长自动计算卡路里消耗',
+                                    style: TextStyle(
+                                        color: Colors.yellow, fontSize: 12),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.yellow,
+                                foregroundColor: Colors.black,
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12)),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 14),
+                              ),
+                              onPressed: loading ? null : uploadSportRecord,
+                              child: loading
+                                  ? const CircularProgressIndicator(
+                                      color: Colors.black)
+                                  : const Text(
+                                      '上传运动记录',
+                                      style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold),
+                                    ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  buildRecordsSection(),
+                  const SizedBox(height: 24),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+      bottomNavigationBar: const BottomTabBar(currentIndex: 1),
     );
   }
 }

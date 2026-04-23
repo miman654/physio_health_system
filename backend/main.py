@@ -21,8 +21,24 @@ from api import auth_api, data_api, ai_api
 from config.settings import PORT
 from db_init import init_db
 
+# 在文件开头添加
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
 # 初始化APP
 app = FastAPI(title="生理健康管理系统后端", version="1.0")
+
+
+# 在路由注册后添加
+@app.middleware("http")
+async def log_requests(request, call_next):
+    logger.info(f"Request: {request.method} {request.url}")
+    response = await call_next(request)
+    logger.info(f"Response: {response.status_code}")
+    return response
 
 
 # 启动时初始化数据库（如果还没创建表则会自动创建）

@@ -11,10 +11,10 @@ import 'controller/auth_controller.dart';
 import 'controller/data_controller.dart';
 
 void main() {
-  // 先启动app，确保GetMaterialApp已初始化后再注册控制器，以避免contextless导航报错
+  // 先注册控制器，再运行app
+  Get.put(AuthController(), permanent: true); // permanent: true 表示永久保存
+  Get.put(DataController(), permanent: true);
   runApp(const MyApp());
-  Get.put(AuthController());
-  Get.put(DataController());
 }
 
 class MyApp extends StatelessWidget {
