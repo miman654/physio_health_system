@@ -1,4 +1,5 @@
 # 后端入口文件
+import asyncio
 import os
 import sys
 
@@ -17,9 +18,21 @@ import uvicorn  # ASGI服务器，用于运行FastAPI应用
 # 确保项目根目录在 sys.path 首位（避免误用 venv 目录中同名模块）
 sys.path.insert(0, os.path.dirname(__file__))
 
-from api import auth_api, data_api, ai_api
+from api import auth_api, data_api, ai_api, device_api
 from config.settings import PORT
 from db_init import init_db
+from service.iot_service import (
+    build_ws_snapshot,
+    start_iot_mqtt_ingest,
+    stop_iot_mqtt_ingest,
+)
+from service.realtime_broker import (
+    register_device_socket,
+    set_app_loop,
+    shutdown_realtime_broker,
+    unregister_device_socket,
+)
+from repository.iot_repo import get_latest_device_event
 
 # 在文件开头添加
 import logging
@@ -44,7 +57,15 @@ async def log_requests(request, call_next):
 # 启动时初始化数据库（如果还没创建表则会自动创建）
 @app.on_event("startup")
 async def startup_event():
+    set_app_loop(asyncio.get_running_loop())
     init_db()
+    start_iot_mqtt_ingest()
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    shutdown_realtime_broker()
+    stop_iot_mqtt_ingest()
 
 
 # 根据你的代码生成OpenAPI规范（JSON格式）
@@ -64,27 +85,28 @@ app.add_middleware(
 app.include_router(auth_api.router, prefix="/auth", tags=["用户鉴权"])
 app.include_router(data_api.router, prefix="/data", tags=["生理数据"])
 app.include_router(ai_api.router, prefix="/ai", tags=["AI服务"])
-
-# WebSocket实时推送（硬件→后端→APP）
-active_connections: list[WebSocket] = []  # 存储所有活跃的WebSocket连接
+app.include_router(device_api.router, tags=["设备接入"])
 
 
-# WebSocket端点定义，路径参数user_id用于区分不同用户的连接
-@app.websocket("/ws/{user_id}")
-async def websocket_endpoint(websocket: WebSocket, user_id: int):
-    # 接受WebSocket连接请求，并将连接添加到活跃连接列表中
+# WebSocket实时推送（MQTT 入库后 -> 前端订阅）
+@app.websocket("/ws/device/{device_id}")
+async def websocket_device_latest(websocket: WebSocket, device_id: str):
     await websocket.accept()
-    active_connections.append(websocket)
+    await register_device_socket(device_id, websocket)
+
     try:
-        # 持续监听WebSocket连接，接收硬件数据并推送给所有连接的客户端（Flutter）
+        latest = get_latest_device_event(device_id=device_id)
+        if latest:
+            await websocket.send_json(
+                {"type": "device_latest", "data": build_ws_snapshot(latest)}
+            )
+
         while True:
-            # 接收硬件数据（开发期用测试数据模拟）
-            data = await websocket.receive_json()
-            # 推送给所有连接的客户端（Flutter）
-            for connection in active_connections:
-                await connection.send_json(data)
+            await websocket.receive_text()
     except WebSocketDisconnect:
-        active_connections.remove(websocket)
+        pass
+    finally:
+        await unregister_device_socket(device_id, websocket)
 
 
 # 启动服务

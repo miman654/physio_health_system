@@ -11,5 +11,12 @@ DB_PATH = str(BASE_DIR / "physio_data.db")
 # 服务端口
 PORT = 8008
 
+# MQTT 接入配置
+MQTT_HOST = "10.65.146.203"
+MQTT_PORT = 1883
+MQTT_TOPIC = "pubTopic"
+MQTT_CLIENT_ID = "physio-health-ingest"
+MQTT_KEEPALIVE = 60
+
 DEEPSEEK_API_KEY = "sk-4fe5f96a7f6b4cf6b1206ac56436459d"
 DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions"

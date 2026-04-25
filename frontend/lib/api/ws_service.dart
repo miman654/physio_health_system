@@ -1,35 +1,75 @@
 import 'dart:convert';
-import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:get/get.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import '../controller/data_controller.dart';
+import 'api_service.dart';
 
 class WsService {
   static WebSocketChannel? channel;
-  static const String wsBaseUrl = "ws://10.0.2.2:8008/ws/physio";
+  static String? _connectedDeviceId;
+  static bool get isConnected => channel != null;
 
-  // 连接WebSocket（携带Token鉴权）
-  static Future<void> connect() async {
+  static String get wsBaseUrl {
+    final base = ApiService.baseUrl;
+    if (base.startsWith("http://")) {
+      return base.replaceFirst("http://", "ws://");
+    }
+    if (base.startsWith("https://")) {
+      return base.replaceFirst("https://", "wss://");
+    }
+    return base;
+  }
+
+  // 连接WebSocket（订阅 device latest 流）
+  static Future<void> connect({
+    required String deviceId,
+    required void Function(Map<String, dynamic> data) onMessage,
+  }) async {
     try {
-      SharedPreferences prefs = await SharedPreferences.getInstance();
-      String? token = prefs.getString("token");
-      if (token == null || token.isEmpty) {
-        Get.snackbar("提示", "请先登录再连接实时数据");
+      if (channel != null && _connectedDeviceId == deviceId) {
         return;
       }
-      channel = IOWebSocketChannel.connect("$wsBaseUrl?token=$token");
+
+      if (channel != null) {
+        channel!.sink.close();
+        channel = null;
+      }
+
+      channel =
+          WebSocketChannel.connect(Uri.parse("$wsBaseUrl/ws/device/$deviceId"));
+      _connectedDeviceId = deviceId;
       Get.snackbar("成功", "实时生理数据连接成功");
       // 监听WS消息
       channel!.stream.listen(
         (message) {
-          Map<String, dynamic> data = jsonDecode(message);
-          Get.find<DataController>().uploadPhysioData(data);
+          final decoded = jsonDecode(message);
+          Map<String, dynamic> data;
+          if (decoded is Map<String, dynamic>) {
+            if (decoded["data"] is Map<String, dynamic>) {
+              data = Map<String, dynamic>.from(decoded["data"] as Map);
+            } else if (decoded["data"] is Map) {
+              data = Map<String, dynamic>.from(decoded["data"] as Map);
+            } else {
+              data = Map<String, dynamic>.from(decoded);
+            }
+          } else {
+            return;
+          }
+          onMessage(data);
         },
-        onError: (e) => Get.snackbar("WS错误", "实时数据连接异常：$e"),
-        onDone: () => Get.snackbar("WS提示", "实时数据连接已断开"),
+        onError: (e) {
+          channel = null;
+          _connectedDeviceId = null;
+          Get.snackbar("WS错误", "实时数据连接异常：$e");
+        },
+        onDone: () {
+          channel = null;
+          _connectedDeviceId = null;
+          Get.snackbar("WS提示", "实时数据连接已断开");
+        },
       );
     } catch (e) {
+      channel = null;
+      _connectedDeviceId = null;
       Get.snackbar("错误", "实时数据连接失败：$e");
     }
   }
@@ -48,7 +88,7 @@ class WsService {
     if (channel != null) {
       channel!.sink.close();
       channel = null;
-      Get.snackbar("提示", "已关闭实时数据连接");
+      _connectedDeviceId = null;
     }
   }
 }

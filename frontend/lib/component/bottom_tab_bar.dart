@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import '../utils/color.dart';
 
 // 底部Tab导航组件（全局复用）
 class BottomTabBar extends StatelessWidget {
@@ -18,9 +19,9 @@ class BottomTabBar extends StatelessWidget {
       // 固定Tab数量（超过3个必须加这个，否则布局错乱）
       type: BottomNavigationBarType.fixed,
       // 选中颜色
-      selectedItemColor: Colors.blue,
+      selectedItemColor: AppColors.primaryDark,
       // 未选中颜色
-      unselectedItemColor: Colors.grey,
+      unselectedItemColor: AppColors.textTip,
       // 显示未选中的文字
       showUnselectedLabels: true,
       // Tab选项配置

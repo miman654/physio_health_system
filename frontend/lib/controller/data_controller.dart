@@ -1,27 +1,140 @@
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../api/api_service.dart';
+import '../api/ws_service.dart';
 import 'package:flutter/material.dart';
 
 class DataController extends GetxController {
   final ApiService _apiService = ApiService();
   RxBool isLoading = false.obs; // 全局数据加载状态
+  RxBool isRealtimeConnected = false.obs;
 
   // 生理数据（适配接口的timestamp字段）
   RxList physioDataList = [].obs;
+  RxMap realtimePhysioSnapshot = <String, dynamic>{}.obs;
   // 睡眠记录
   RxList sleepDataList = [].obs;
   // 运动记录
   RxList sportDataList = [].obs;
+  RxMap sportCalendarData = {}.obs;
   // AI分析结果（适配接口的数组/对象返回）
   RxMap aiPhysioAnalysis = {}.obs; // AI生理分析完整数据
   RxList aiPhysioSuggestions = [].obs; // AI生理分析建议数组
   RxList aiSportNutrition = [].obs; // AI运动营养建议数组
+  String? _realtimeDeviceId;
 
   // 获取当前登录用户ID（从SP读取，避免全局传参）
   Future<int> _getCurrentUserId() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     return prefs.getInt("user_id") ?? 0; // 默认为0，如果没有则返回0
+  }
+
+  Future<void> syncRealtimePhysioSnapshot(
+      {String deviceId = "hi3861-01"}) async {
+    final result = await _apiService.getDeviceLatest(deviceId);
+    if (result["code"] == 200 && result["data"] is Map) {
+      realtimePhysioSnapshot.value = _normalizeRealtimePhysio(
+        Map<String, dynamic>.from(result["data"] as Map),
+      );
+    } else {
+      realtimePhysioSnapshot.clear();
+    }
+  }
+
+  String _formatTimestampMs(int? timestampMs) {
+    if (timestampMs == null || timestampMs <= 0) return "";
+    final normalizedMs =
+        timestampMs < 1000000000000 ? timestampMs * 1000 : timestampMs;
+    final date = DateTime.fromMillisecondsSinceEpoch(normalizedMs);
+    String pad(int value) => value.toString().padLeft(2, '0');
+    return "${date.year}-${pad(date.month)}-${pad(date.day)} ${pad(date.hour)}:${pad(date.minute)}:${pad(date.second)}";
+  }
+
+  int? _extractTimestampMs(Map<String, dynamic> data) {
+    final candidates = [
+      data['timestamp_ms'],
+      data['timestamp'],
+      data['server_received_at'],
+      data['last_ts_device_ms'],
+      data['updated_at'],
+    ];
+
+    for (final candidate in candidates) {
+      int? value;
+      if (candidate is int) {
+        value = candidate;
+      } else if (candidate is String) {
+        value = int.tryParse(candidate);
+      }
+
+      if (value != null && value > 0) {
+        return value < 1000000000000 ? value * 1000 : value;
+      }
+    }
+
+    return null;
+  }
+
+  Map<String, dynamic> _normalizeRealtimePhysio(Map<String, dynamic> data) {
+    final normalized = Map<String, dynamic>.from(data);
+    final timestampMs = _extractTimestampMs(normalized);
+    normalized["timestamp_ms"] = timestampMs;
+    final formattedTimestamp = _formatTimestampMs(timestampMs);
+    final rawTimestamp = normalized["timestamp"]?.toString();
+    normalized["timestamp"] = formattedTimestamp.isNotEmpty
+        ? formattedTimestamp
+        : (rawTimestamp?.isNotEmpty == true ? rawTimestamp : "");
+    normalized["scene"] = normalized["scene"] ?? 0;
+    return normalized;
+  }
+
+  void applyRealtimePhysioSnapshot(Map<String, dynamic> data) {
+    final normalized = _normalizeRealtimePhysio(data);
+    realtimePhysioSnapshot.value = normalized;
+
+    if (physioDataList.isNotEmpty) {
+      final latest = physioDataList.first;
+      final sameSeq = latest is Map && latest["seq"] == normalized["seq"];
+      if (sameSeq) {
+        physioDataList[0] = normalized;
+      } else {
+        physioDataList.insert(0, normalized);
+      }
+    } else {
+      physioDataList.insert(0, normalized);
+    }
+
+    while (physioDataList.length > 20) {
+      physioDataList.removeLast();
+    }
+  }
+
+  Future<void> startRealtimePhysioStream(
+      {String deviceId = "hi3861-01"}) async {
+    if (isRealtimeConnected.value && _realtimeDeviceId == deviceId) {
+      return;
+    }
+
+    if (isRealtimeConnected.value && _realtimeDeviceId != deviceId) {
+      WsService.close();
+      isRealtimeConnected.value = false;
+    }
+
+    await WsService.connect(
+      deviceId: deviceId,
+      onMessage: applyRealtimePhysioSnapshot,
+    );
+    isRealtimeConnected.value = WsService.isConnected;
+    if (isRealtimeConnected.value) {
+      _realtimeDeviceId = deviceId;
+    }
+  }
+
+  void stopRealtimePhysioStream() {
+    WsService.close();
+    isRealtimeConnected.value = false;
+    _realtimeDeviceId = null;
+    realtimePhysioSnapshot.clear();
   }
 
   // ********************* 生理数据操作 *********************
@@ -48,6 +161,7 @@ class DataController extends GetxController {
           backgroundColor: Colors.green.withOpacity(0.7),
           colorText: Colors.white);
       await queryPhysioData(); // 上传成功后刷新列表
+      await startRealtimePhysioStream();
     } else {
       Get.snackbar("上传失败", result["msg"] ?? "请稍后重试",
           backgroundColor: Colors.red.withOpacity(0.7),
@@ -70,27 +184,6 @@ class DataController extends GetxController {
 
     if (result["code"] == 200) {
       physioDataList.value = result["data"] ?? [];
-    }
-  }
-
-  // 生成模拟睡眠生理数据
-  Future<void> mockSleepPhysioData() async {
-    int userId = await _getCurrentUserId();
-    if (userId == 0) {
-      Get.snackbar("提示", "请先登录",
-          backgroundColor: Colors.orange, colorText: Colors.white);
-      return;
-    }
-
-    isLoading.value = true;
-    var result = await _apiService.mockSleepPhysioData(userId);
-    isLoading.value = false;
-
-    if (result["code"] == 200) {
-      Get.snackbar("成功", result["msg"] ?? "模拟睡眠数据生成成功",
-          backgroundColor: Colors.green.withOpacity(0.7),
-          colorText: Colors.white);
-      await queryPhysioData(); // 生成后刷新列表
     }
   }
 
@@ -183,6 +276,30 @@ class DataController extends GetxController {
     }
   }
 
+  Future<Map<String, dynamic>?> querySportCalendar({
+    required int year,
+    required int month,
+  }) async {
+    int userId = await _getCurrentUserId();
+    if (userId == 0) {
+      Get.snackbar("提示", "请先登录",
+          backgroundColor: Colors.orange, colorText: Colors.white);
+      return null;
+    }
+
+    isLoading.value = true;
+    var result = await _apiService.querySportCalendar(userId, year, month);
+    isLoading.value = false;
+
+    if (result["code"] == 200) {
+      sportCalendarData.value = result["data"] ?? {};
+      return result;
+    }
+
+    sportCalendarData.clear();
+    return result;
+  }
+
   // ********************* AI分析操作 *********************
   // AI生理数据分析（适配接口：返回完整的data对象，包含suggestions数组）
   // AI生理数据分析（适配接口：返回完整的data对象，包含suggestions数组）
@@ -257,6 +374,7 @@ class DataController extends GetxController {
         querySportRecord(),
         getAiPhysioAnalysis(), // 这个可能失败，但不影响其他数据
       ]);
+      await startRealtimePhysioStream();
     } catch (e) {
       debugPrint("刷新数据失败: $e");
     } finally {

@@ -140,3 +140,34 @@ def get_sport_record_by_user(user_id: int, limit: int = 7):
     data = cursor.fetchall()
     conn.close()
     return [dict(item) for item in data]
+
+
+def get_sport_calendar_by_user(user_id: int, year: int, month: int):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    month_start = f"{year:04d}-{month:02d}-01"
+    if month == 12:
+        next_month_start = f"{year + 1:04d}-01-01"
+    else:
+        next_month_start = f"{year:04d}-{month + 1:02d}-01"
+
+    cursor.execute(
+        """SELECT
+            substr(sport_start, 1, 10) AS sport_date,
+            COUNT(*) AS workout_count,
+            COALESCE(SUM(calorie), 0) AS total_calorie,
+            MIN(sport_start) AS first_start,
+            MAX(sport_end) AS last_end
+        FROM sport_record
+        WHERE user_id = ?
+          AND sport_start >= ?
+          AND sport_start < ?
+        GROUP BY substr(sport_start, 1, 10)
+        ORDER BY sport_date""",
+        (user_id, month_start, next_month_start),
+    )
+
+    data = cursor.fetchall()
+    conn.close()
+    return [dict(item) for item in data]

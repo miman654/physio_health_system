@@ -1,12 +1,14 @@
-// Sport page
+import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
+
 import '../component/bottom_tab_bar.dart';
-import '../api/api_service.dart';
 import '../controller/auth_controller.dart';
 import '../controller/data_controller.dart';
+import '../utils/color.dart';
 
 class SportPage extends StatefulWidget {
   const SportPage({super.key});
@@ -16,15 +18,10 @@ class SportPage extends StatefulWidget {
 }
 
 class _SportPageState extends State<SportPage> {
-  final ApiService _apiService = ApiService();
   final AuthController _authController = Get.find<AuthController>();
   final DataController _dataController = Get.find<DataController>();
 
-  final TextEditingController startController = TextEditingController();
-  final TextEditingController endController = TextEditingController();
-
-  String sportType = '跑步';
-  final List<String> sportTypes = [
+  final List<String> _sportTypes = <String>[
     '步行',
     '快走',
     '跑步',
@@ -32,440 +29,588 @@ class _SportPageState extends State<SportPage> {
     '骑行',
     '游泳',
     '瑜伽',
-    '健身'
+    '健身',
   ];
 
-  bool loading = false; // 用于上传操作的loading
+  final Map<String, String> _sportAdvice = const {
+    '步行': '建议快走20分钟，专注呼吸节奏。',
+    '快走': '保持中等配速，组间放松20秒。',
+    '跑步': '建议2公里热身，再逐步提速。',
+    '快跑': '每组90秒，组间慢走恢复。',
+    '骑行': '控制踏频，保持心率稳定。',
+    '游泳': '建议分组游进，每组后放松。',
+    '瑜伽': '专注核心与拉伸，避免憋气。',
+    '健身': '动作标准优先，重量循序渐进。',
+  };
+
+  String _sportType = '跑步';
+  bool _loading = false;
+  bool _isWorkoutRunning = false;
+  DateTime? _workoutStart;
+  _ChartAxisMode _chartAxisMode = _ChartAxisMode.weekday;
 
   @override
   void initState() {
     super.initState();
-    fetchSportRecords(); // 初始化时获取数据
+    _fetchSportRecords();
   }
 
-  @override
-  void dispose() {
-    startController.dispose();
-    endController.dispose();
-    super.dispose();
-  }
-
-  Future<void> fetchSportRecords() async {
+  Future<void> _fetchSportRecords() async {
     setState(() {
-      loading = true;
+      _loading = true;
     });
     await _dataController.querySportRecord(limit: 10);
+    if (!mounted) return;
     setState(() {
-      loading = false;
+      _loading = false;
     });
   }
 
-  Future<void> uploadSportRecord() async {
-    final start = startController.text;
-    final end = endController.text;
+  Future<void> _toggleWorkout() async {
+    if (_isWorkoutRunning) {
+      await _endWorkout();
+    } else {
+      _startWorkout();
+    }
+  }
 
-    if (start.isEmpty || end.isEmpty) {
-      Get.snackbar('提示', '请填写运动开始和结束时间');
+  void _startWorkout() {
+    setState(() {
+      _workoutStart = DateTime.now();
+      _isWorkoutRunning = true;
+    });
+    Get.snackbar(
+      '运动开始',
+      '已开始$_sportType，请完成后点击结束',
+      backgroundColor: Colors.green.withValues(alpha: 0.75),
+      colorText: Colors.black,
+    );
+  }
+
+  Future<void> _endWorkout() async {
+    final startedAt = _workoutStart;
+    if (startedAt == null) {
+      setState(() {
+        _isWorkoutRunning = false;
+      });
       return;
     }
 
+    final endedAt = DateTime.now();
     setState(() {
-      loading = true;
+      _loading = true;
     });
 
-    // 调用上传接口并获取返回值
-    var result = await _dataController.uploadSportRecord({
+    final result = await _dataController.uploadSportRecord({
       'user_id': _authController.userId.value,
-      'sport_type': sportType,
-      'sport_start': _formatWithSeconds(start),
-      'sport_end': _formatWithSeconds(end),
+      'sport_type': _sportType,
+      'sport_start': DateFormat('yyyy-MM-dd HH:mm:ss').format(startedAt),
+      'sport_end': DateFormat('yyyy-MM-dd HH:mm:ss').format(endedAt),
     });
+
+    if (!mounted) return;
+
+    final dynamic calorieRaw = result?['data']?['calorie'];
+    final burned = _asDouble(calorieRaw);
 
     setState(() {
-      loading = false;
-      // 清空表单
-      startController.clear();
-      endController.clear();
+      _loading = false;
+      _isWorkoutRunning = false;
+      _workoutStart = null;
     });
 
-    // 如果上传成功，输出卡路里
-    if (result != null && result["code"] == 200) {
-      final data = result["data"];
-      if (data != null && data["calorie"] != null) {
-        // 在控制台输出卡路里
-        debugPrint('本次运动消耗卡路里: ${data["calorie"]} 千卡');
+    if (burned != null) {
+      _showCalorieDialog(burned);
+      await _fetchSportRecords();
+    }
+  }
 
-        // 也可以显示一个提示框
-        Get.snackbar(
-          '运动消耗',
-          '本次运动消耗了 ${data["calorie"]} 千卡',
-          backgroundColor: Colors.green.withOpacity(0.8),
-          colorText: Colors.white,
-          duration: const Duration(seconds: 3),
+  void _showCalorieDialog(double calories) {
+    Get.dialog(
+      AlertDialog(
+        backgroundColor: AppColors.card,
+        title: const Text(
+          '本次运动完成',
+          style: TextStyle(color: AppColors.textTitle),
+        ),
+        content: Text(
+          '本次燃烧 ${calories.toStringAsFixed(1)} 千卡',
+          style: const TextStyle(color: AppColors.textBody, fontSize: 16),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: const Text(
+              '知道了',
+              style: TextStyle(color: AppColors.primaryDark),
+            ),
+          )
+        ],
+      ),
+    );
+  }
+
+  double? _asDouble(dynamic value) {
+    if (value == null) return null;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString());
+  }
+
+  DateTime? _parseTime(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+    final formats = <String>['yyyy-MM-dd HH:mm:ss', 'yyyy-MM-dd HH:mm'];
+    for (final format in formats) {
+      try {
+        return DateFormat(format).parse(raw);
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  void _toggleChartAxisMode() {
+    setState(() {
+      _chartAxisMode = _chartAxisMode == _ChartAxisMode.weekday
+          ? _ChartAxisMode.time
+          : _ChartAxisMode.weekday;
+    });
+  }
+
+  List<_CaloriePoint> _buildChartPoints() {
+    final raw = _dataController.sportDataList.cast<dynamic>().toList();
+    final records =
+        raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+
+    records.sort((a, b) {
+      final ta = _parseTime(a['sport_start']?.toString()) ?? DateTime(1970);
+      final tb = _parseTime(b['sport_start']?.toString()) ?? DateTime(1970);
+      return ta.compareTo(tb);
+    });
+
+    final last =
+        records.length > 7 ? records.sublist(records.length - 7) : records;
+
+    final points = <_CaloriePoint>[];
+    for (final item in last) {
+      final time =
+          _parseTime(item['sport_start']?.toString()) ?? DateTime.now();
+      final calories = _asDouble(item['calorie']) ?? 0;
+      points.add(
+        _CaloriePoint(
+          time: time,
+          calories: calories,
+          isToday: _isSameDay(time, DateTime.now()),
+        ),
+      );
+    }
+
+    if (points.isEmpty) {
+      final now = DateTime.now();
+      final labels = <String>['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+      for (var i = 0; i < labels.length; i++) {
+        points.add(
+          _CaloriePoint(
+            time: DateTime(now.year, now.month, now.day)
+                .subtract(Duration(days: now.weekday - 1 - i)),
+            calories: 0,
+            isToday: i == now.weekday - 1,
+          ),
         );
       }
     }
+
+    return points;
   }
 
-  String _formatWithSeconds(String value) {
-    try {
-      final dt = DateFormat('yyyy-MM-dd HH:mm').parse(value);
-      return DateFormat('yyyy-MM-dd HH:mm:ss').format(dt);
-    } catch (_) {
-      try {
-        final dt = DateFormat('yyyy-MM-dd HH:mm:ss').parse(value);
-        return DateFormat('yyyy-MM-dd HH:mm:ss').format(dt);
-      } catch (_) {}
-      return value;
+  bool _isSameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  String _formatDuration(Duration? duration) {
+    if (duration == null) return '--';
+    if (duration.inSeconds <= 0) return '--';
+    final minutes = duration.inMinutes;
+    final seconds = duration.inSeconds.remainder(60);
+    if (minutes <= 0) {
+      return '${duration.inSeconds}秒';
     }
+    if (seconds == 0) {
+      return '$minutes分钟';
+    }
+    return '$minutes分$seconds秒';
   }
 
-  Future<void> _pickDateTime(
-      BuildContext context, TextEditingController controller) async {
-    DateTime initial = DateTime.now();
-    try {
-      initial = DateFormat('yyyy-MM-dd HH:mm').parse(controller.text);
-    } catch (_) {
-      try {
-        initial = DateFormat('yyyy-MM-dd HH:mm:ss').parse(controller.text);
-      } catch (_) {}
+  String _formatCompactDuration(Duration? duration) {
+    if (duration == null) return '--';
+    if (duration.inSeconds <= 0) return '--';
+
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes.remainder(60);
+    final seconds = duration.inSeconds.remainder(60);
+
+    if (hours > 0) {
+      return minutes > 0 ? '${hours}h${minutes}min' : '${hours}h';
+    }
+    if (minutes > 0) {
+      return seconds > 0 ? '${minutes}min${seconds}s' : '${minutes}min';
+    }
+    return '${seconds}s';
+  }
+
+  String _weekdayLabel(DateTime date) {
+    const labels = <int, String>{
+      DateTime.monday: '星期一',
+      DateTime.tuesday: '星期二',
+      DateTime.wednesday: '星期三',
+      DateTime.thursday: '星期四',
+      DateTime.friday: '星期五',
+      DateTime.saturday: '星期六',
+      DateTime.sunday: '星期日',
+    };
+    return labels[date.weekday] ?? '星期?';
+  }
+
+  int? _asInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is num) return value.round();
+    return int.tryParse(value.toString());
+  }
+
+  List<_SportDayGroup> _buildSportHistoryGroups() {
+    final raw = _dataController.sportDataList.cast<dynamic>().toList();
+    final records = raw
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+
+    records.sort((a, b) {
+      final ta = _parseTime(a['sport_start']?.toString()) ?? DateTime(1970);
+      final tb = _parseTime(b['sport_start']?.toString()) ?? DateTime(1970);
+      return tb.compareTo(ta);
+    });
+
+    final limited = records.take(30);
+    final grouped = <String, _SportDayGroup>{};
+
+    for (final item in limited) {
+      final startTime = _parseTime(item['sport_start']?.toString());
+      final endTime = _parseTime(item['sport_end']?.toString());
+      final dayKey = startTime == null
+          ? '未知日期'
+          : DateFormat('yyyy-MM-dd').format(startTime);
+      final group = grouped.putIfAbsent(
+        dayKey,
+        () => _SportDayGroup(
+          title: startTime == null
+              ? '未知日期'
+              : '${DateFormat('yyyy-MM-dd').format(startTime)} ${_weekdayLabel(startTime)}',
+        ),
+      );
+
+      group.items.add(
+        _SportRecordEntry(
+          sportType: item['sport_type']?.toString() ?? '--',
+          startTime: startTime,
+          endTime: endTime,
+          avgHeartRate: _asInt(item['avg_heart_rate']),
+          avgSpo2: _asInt(item['avg_spo2']),
+          avgTemp: _asDouble(item['avg_temp']),
+          calorie: _asDouble(item['calorie']),
+          suggestion: item['suggestion']?.toString() ?? '',
+        ),
+      );
     }
 
-    final date = await showDatePicker(
-      context: context,
-      initialDate: initial,
-      firstDate: DateTime(2000),
-      lastDate: DateTime(2100),
-    );
-    if (!mounted) return;
-    if (date == null) return;
-
-    final time = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.fromDateTime(initial),
-    );
-    if (!mounted) return;
-    if (time == null) return;
-
-    final selected = DateTime(
-      date.year,
-      date.month,
-      date.day,
-      time.hour,
-      time.minute,
-    );
-    controller.text = DateFormat('yyyy-MM-dd HH:mm').format(selected);
+    return grouped.values.toList();
   }
 
-  String _formatDateTime(String? raw) {
-    if (raw == null || raw.isEmpty) return '';
-    try {
-      final dt = DateFormat('yyyy-MM-dd HH:mm:ss').parse(raw);
-      return DateFormat('MM-dd HH:mm').format(dt);
-    } catch (_) {
-      try {
-        final dt = DateFormat('yyyy-MM-dd HH:mm').parse(raw);
-        return DateFormat('MM-dd HH:mm').format(dt);
-      } catch (_) {
-        return raw;
-      }
-    }
-  }
-
-  Widget _buildPhysioChip(
-      String label, String value, IconData icon, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(4),
-      ),
+  Widget _buildHeader() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 12, color: color),
-          const SizedBox(width: 2),
-          Text(
-            '$label $value',
-            style: TextStyle(fontSize: 11, color: color),
+          Expanded(
+            child: Text(
+              '嗨！\n${_authController.username.value.isEmpty ? '优秀福' : _authController.username.value}',
+              style: const TextStyle(
+                color: AppColors.textTitle,
+                fontSize: 42,
+                fontWeight: FontWeight.w800,
+                height: 2.12,
+              ),
+            ),
+          ),
+          _buildAvatar(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAvatar() {
+    return Container(
+      width: 81,
+      height: 81,
+      decoration: BoxDecoration(
+        color: AppColors.primaryLight,
+        borderRadius: BorderRadius.circular(40.5),
+        border: Border.all(color: AppColors.border),
+      ),
+      padding: const EdgeInsets.all(4),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(36),
+        child: Image.asset('assets/images/image.png', fit: BoxFit.cover),
+      ),
+    );
+  }
+
+  Widget _buildChartCard(List<_CaloriePoint> points) {
+    final calorieValues = points.map((e) => e.calories).toList();
+    final maxValue =
+        calorieValues.isEmpty ? 1.0 : calorieValues.reduce(math.max);
+    final minValue =
+        calorieValues.isEmpty ? 0.0 : calorieValues.reduce(math.min);
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 18),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.primaryLight),
+      ),
+      child: Column(
+        children: [
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: _toggleChartAxisMode,
+              style: TextButton.styleFrom(
+                backgroundColor: AppColors.primaryLight,
+                foregroundColor: AppColors.primaryDark,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 22, vertical: 11),
+                minimumSize: const Size(112, 58),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              child: Text(
+                _chartAxisMode == _ChartAxisMode.weekday ? '星期/天' : '天/星期',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 26,
+                  color: AppColors.textTitle,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 140,
+            child: CustomPaint(
+              painter: _CalorieCurvePainter(
+                points: points,
+                axisMode: _chartAxisMode,
+                minValue: minValue,
+                maxValue: maxValue,
+              ),
+              child: Container(),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget buildDropdown() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              Colors.yellow.withOpacity(0.15),
-              Colors.orange.withOpacity(0.1)
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(15),
-          border: Border.all(color: Colors.yellow.withOpacity(0.5), width: 1.5),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.yellow.withOpacity(0.1),
-              blurRadius: 8,
-              spreadRadius: 1,
-            ),
-          ],
-        ),
-        child: DropdownButtonHideUnderline(
-          child: DropdownButton<String>(
-            value: sportType,
-            isExpanded: true,
-            dropdownColor: const Color(0xFF2C2344),
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-            ),
-            icon: Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: Colors.yellow.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(8),
+  Widget _buildActivitySection() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(18, 18, 18, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  '今日活动',
+                  style: TextStyle(
+                    color: AppColors.textTitle,
+                    fontSize: 38,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
               ),
-              child: const Icon(Icons.arrow_drop_down,
-                  color: Colors.yellow, size: 28),
-            ),
-            items: sportTypes.map((type) {
-              IconData iconData;
-              Color iconColor;
-
-              // 根据运动类型选择不同的图标
-              switch (type) {
-                case '步行':
-                  iconData = Icons.directions_walk;
-                  iconColor = Colors.green;
-                  break;
-                case '快走':
-                  iconData = Icons.directions_walk;
-                  iconColor = Colors.lightGreen;
-                  break;
-                case '跑步':
-                  iconData = Icons.directions_run;
-                  iconColor = Colors.orange;
-                  break;
-                case '快跑':
-                  iconData = Icons.run_circle;
-                  iconColor = Colors.deepOrange;
-                  break;
-                case '骑行':
-                  iconData = Icons.directions_bike;
-                  iconColor = Colors.blue;
-                  break;
-                case '游泳':
-                  iconData = Icons.pool;
-                  iconColor = Colors.lightBlue;
-                  break;
-                case '瑜伽':
-                  iconData = Icons.self_improvement;
-                  iconColor = Colors.purple;
-                  break;
-                case '健身':
-                  iconData = Icons.fitness_center;
-                  iconColor = Colors.red;
-                  break;
-                default:
-                  iconData = Icons.sports;
-                  iconColor = Colors.yellow;
-              }
-
-              return DropdownMenuItem(
-                value: type,
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: iconColor.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Icon(iconData, color: iconColor, size: 20),
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: AppColors.primaryLight,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: TextButton(
+                  onPressed: () => Get.toNamed('/sport-calendar'),
+                  style: TextButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    foregroundColor: AppColors.primaryDark,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
                     ),
-                    const SizedBox(width: 12),
-                    Text(
-                      type,
-                      style: TextStyle(
-                        color:
-                            sportType == type ? Colors.yellow : Colors.white70,
-                        fontWeight: sportType == type
-                            ? FontWeight.bold
-                            : FontWeight.normal,
+                  ),
+                  child: const Icon(Icons.calendar_month,
+                      color: AppColors.primaryDark),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 220,
+                  child: ListView.builder(
+                    itemCount: _sportTypes.length,
+                    itemBuilder: (_, index) {
+                      final type = _sportTypes[index];
+                      final selected = _sportType == type;
+                      final advice = _sportAdvice[type] ?? '保持稳定节奏，注意补水。';
+                      return InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: () {
+                          setState(() {
+                            _sportType = type;
+                          });
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 8, horizontal: 6),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              SizedBox(
+                                width: 26,
+                                child: Column(
+                                  children: [
+                                    Container(
+                                      width: selected ? 12 : 9,
+                                      height: selected ? 12 : 9,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: selected
+                                            ? AppColors.primary
+                                            : AppColors.textTip,
+                                      ),
+                                    ),
+                                    if (index != _sportTypes.length - 1)
+                                      SizedBox(
+                                        height: 28,
+                                        child: Column(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceBetween,
+                                          children: List.generate(
+                                            6,
+                                            (_) => Container(
+                                              width: 1,
+                                              height: 3,
+                                              color: AppColors.primaryLight,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      type,
+                                      style: TextStyle(
+                                        color: AppColors.textTitle,
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 30,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      advice,
+                                      style: TextStyle(
+                                        color: AppColors.textBody,
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              SizedBox(
+                height: 220,
+                child: Column(
+                  children: [
+                    const SizedBox(height: 26),
+                    SizedBox(
+                      width: 150,
+                      height: 50,
+                      child: ElevatedButton(
+                        onPressed: _loading ? null : _toggleWorkout,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor:
+                              _isWorkoutRunning ? Colors.red : Colors.green,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 18),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(25),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: _loading
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    _isWorkoutRunning ? '结束' : '开始',
+                                    style: const TextStyle(
+                                      fontSize: 36,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ],
+                              ),
                       ),
                     ),
                   ],
                 ),
-              );
-            }).toList(),
-            onChanged: (value) {
-              if (value != null) {
-                setState(() {
-                  sportType = value;
-                });
-              }
-            },
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget buildDateTimeField(
-      TextEditingController controller, String label, IconData icon) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: TextField(
-        controller: controller,
-        readOnly: true,
-        style: const TextStyle(color: Colors.white),
-        decoration: InputDecoration(
-          labelText: label,
-          labelStyle: const TextStyle(color: Colors.white70),
-          prefixIcon: Icon(icon, color: Colors.yellow),
-          suffixIcon: const Icon(Icons.calendar_today, color: Colors.yellow),
-          enabledBorder: OutlineInputBorder(
-            borderSide: const BorderSide(color: Colors.white24),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderSide: const BorderSide(color: Colors.yellow),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          fillColor: Colors.white.withOpacity(0.05),
-          filled: true,
-        ),
-        onTap: () => _pickDateTime(context, controller),
-      ),
-    );
-  }
-
-  Widget buildRecordItem(Map<String, dynamic> record) {
-    final start = _formatDateTime(record['sport_start']?.toString());
-    final end = _formatDateTime(record['sport_end']?.toString());
-    final type = record['sport_type']?.toString() ?? '';
-    final hr = record['avg_heart_rate']?.toString() ?? '--';
-    final spo2 = record['avg_spo2']?.toString() ?? '--';
-    final temp = record['avg_temp']?.toString() ?? '--';
-    final calorie = record['calorie']?.toString() ?? '--';
-    final suggestion = record['suggestion']?.toString() ?? '';
-
-    // 计算运动时长
-    String durationText = '';
-    if (record['sport_start'] != null && record['sport_end'] != null) {
-      try {
-        final startTime =
-            DateFormat('yyyy-MM-dd HH:mm:ss').parse(record['sport_start']);
-        final endTime =
-            DateFormat('yyyy-MM-dd HH:mm:ss').parse(record['sport_end']);
-        final minutes = endTime.difference(startTime).inMinutes;
-        if (minutes > 0) {
-          durationText = '$minutes分钟';
-        }
-      } catch (_) {}
-    }
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withOpacity(0.1)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 运动类型和时间
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: Colors.yellow.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      type,
-                      style: const TextStyle(
-                        color: Colors.yellow,
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  if (durationText.isNotEmpty)
-                    Text(
-                      durationText,
-                      style:
-                          const TextStyle(color: Colors.white70, fontSize: 12),
-                    ),
-                ],
-              ),
-              Text(
-                '$start - $end',
-                style: const TextStyle(color: Colors.white54, fontSize: 11),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          // 生理指标
-          Row(
-            children: [
-              _buildPhysioChip('心率', hr, Icons.favorite, Colors.red),
-              const SizedBox(width: 8),
-              _buildPhysioChip('血氧', '$spo2%', Icons.bloodtype, Colors.blue),
-              const SizedBox(width: 8),
-              _buildPhysioChip(
-                  '体温', '$temp°C', Icons.thermostat, Colors.orange),
-            ],
-          ),
-          const SizedBox(height: 8),
-          // 卡路里
-          Row(
-            children: [
-              Icon(Icons.local_fire_department,
-                  size: 14, color: Colors.orange.shade300),
-              const SizedBox(width: 4),
-              Text(
-                '消耗: $calorie 千卡',
-                style: const TextStyle(color: Colors.white70, fontSize: 13),
-              ),
-            ],
-          ),
-          if (suggestion.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.green.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.green.withOpacity(0.3)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.lightbulb, color: Colors.green, size: 16),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      suggestion,
-                      style:
-                          const TextStyle(color: Colors.white70, fontSize: 12),
-                    ),
-                  ),
-                ],
+          if (_isWorkoutRunning && _workoutStart != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              '已开始: ${DateFormat('HH:mm:ss').format(_workoutStart!)}',
+              style: const TextStyle(
+                color: AppColors.textBody,
+                fontSize: 13,
               ),
             ),
           ],
@@ -474,73 +619,170 @@ class _SportPageState extends State<SportPage> {
     );
   }
 
-  Widget buildRecordsSection() {
-    return Card(
-      color: Colors.white.withOpacity(0.12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.yellow.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(Icons.history, color: Colors.yellow),
-                ),
-                const SizedBox(width: 12),
-                const Text(
-                  '运动记录',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
+  Widget _buildSportHistorySection() {
+    final groups = _buildSportHistoryGroups();
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(18, 8, 18, 0),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.primaryLight),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '运动情况',
+            style: TextStyle(
+              color: AppColors.textTitle,
+              fontSize: 34,
+              fontWeight: FontWeight.w800,
             ),
-            const SizedBox(height: 16),
-            // 使用 Obx 监听数据变化
-            Obx(() {
-              if (_dataController.isLoading.value && loading) {
-                return const Center(child: CircularProgressIndicator());
-              }
-
-              final records = _dataController.sportDataList;
-
-              if (records.isEmpty) {
-                return Container(
-                  padding: const EdgeInsets.all(24),
-                  alignment: Alignment.center,
-                  child: const Column(
-                    children: [
-                      Icon(Icons.sports_score, size: 48, color: Colors.white24),
-                      SizedBox(height: 8),
-                      Text(
-                        '暂无运动记录',
-                        style: TextStyle(color: Colors.white38),
+          ),
+          const SizedBox(height: 12),
+          if (groups.isEmpty)
+            Text(
+              '暂无运动记录',
+              style: const TextStyle(
+                color: AppColors.textBody,
+                fontSize: 21,
+              ),
+            )
+          else
+            ...groups.expand((group) => [
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryLight,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: Text(
+                      group.title,
+                      style: const TextStyle(
+                        color: AppColors.textTitle,
+                        fontSize: 23,
+                        fontWeight: FontWeight.w800,
                       ),
-                    ],
+                    ),
                   ),
-                );
-              }
+                  ...group.items.map((item) => Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: AppColors.card,
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(color: AppColors.primaryLight),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      item.sportType,
+                                      style: const TextStyle(
+                                        color: AppColors.textTitle,
+                                        fontSize: 34,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: Center(
+                                      child: Text(
+                                        item.calorie == null
+                                            ? '--'
+                                            : '${item.calorie!.toStringAsFixed(1)}千卡',
+                                        style: const TextStyle(
+                                          color: AppColors.primaryDark,
+                                          fontSize: 30,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  Text(
+                                    item.startTime == null
+                                        ? '--'
+                                        : '${DateFormat('HH:mm').format(item.startTime!)}  ${_formatCompactDuration(item.duration)}',
+                                    style: const TextStyle(
+                                      color: AppColors.textBody,
+                                      fontSize: 19,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Wrap(
+                                spacing: 10,
+                                runSpacing: 8,
+                                children: [
+                                  _buildMetricChip(
+                                    '心率',
+                                    item.avgHeartRate == null
+                                        ? '--'
+                                        : '${item.avgHeartRate} 次/分',
+                                  ),
+                                  _buildMetricChip(
+                                    '血氧',
+                                    item.avgSpo2 == null
+                                        ? '--'
+                                        : '${item.avgSpo2}%',
+                                  ),
+                                  _buildMetricChip(
+                                    '体温',
+                                    item.avgTemp == null
+                                        ? '--'
+                                        : '${item.avgTemp!.toStringAsFixed(1)}℃',
+                                  ),
+                                ],
+                              ),
+                              if (item.suggestion.isNotEmpty) ...[
+                                const SizedBox(height: 10),
+                                Text(
+                                  item.suggestion,
+                                  style: const TextStyle(
+                                    color: AppColors.textBody,
+                                    fontSize: 21,
+                                    height: 1.35,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      )),
+                ]),
+        ],
+      ),
+    );
+  }
 
-              return ListView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: records.length,
-                itemBuilder: (context, index) {
-                  return buildRecordItem(records[index]);
-                },
-              );
-            }),
-          ],
+  Widget _buildMetricChip(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.primaryLight,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Text(
+        '$label：$value',
+        style: const TextStyle(
+          color: AppColors.textBody,
+          fontSize: 18,
+          fontWeight: FontWeight.w600,
         ),
       ),
     );
@@ -548,129 +790,286 @@ class _SportPageState extends State<SportPage> {
 
   @override
   Widget build(BuildContext context) {
+    final chartPoints = _buildChartPoints();
+
     return Scaffold(
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          Image.asset(
-            'assets/images/sport.png',
-            fit: BoxFit.cover,
+      backgroundColor: AppColors.background,
+      body: SafeArea(
+        child: MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: TextScaler.linear(0.5),
           ),
-          Container(color: Colors.black.withOpacity(0.25)),
-          SafeArea(
-            child: SingleChildScrollView(
-              child: Column(
-                children: [
-                  const SizedBox(height: 24),
-                  const Text(
-                    '运动记录',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  // 上传表单卡片
-                  Card(
-                    color: Colors.white.withOpacity(0.12),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(18)),
-                    margin:
-                        const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: Colors.yellow.withOpacity(0.2),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: const Icon(Icons.upload,
-                                    color: Colors.yellow),
-                              ),
-                              const SizedBox(width: 12),
-                              const Text(
-                                '上传运动记录',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                          buildDropdown(),
-                          buildDateTimeField(
-                              startController, '开始时间', Icons.play_arrow),
-                          buildDateTimeField(endController, '结束时间', Icons.stop),
-                          const SizedBox(height: 8),
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.yellow.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                  color: Colors.yellow.withOpacity(0.3)),
-                            ),
-                            child: const Row(
-                              children: [
-                                Icon(Icons.info_outline,
-                                    color: Colors.yellow, size: 18),
-                                SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    '系统会根据您的运动类型和时长自动计算卡路里消耗',
-                                    style: TextStyle(
-                                        color: Colors.yellow, fontSize: 12),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.yellow,
-                                foregroundColor: Colors.black,
-                                shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12)),
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 14),
-                              ),
-                              onPressed: loading ? null : uploadSportRecord,
-                              child: loading
-                                  ? const CircularProgressIndicator(
-                                      color: Colors.black)
-                                  : const Text(
-                                      '上传运动记录',
-                                      style: TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold),
-                                    ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  buildRecordsSection(),
-                  const SizedBox(height: 24),
-                ],
-              ),
+          child: RefreshIndicator(
+            onRefresh: _fetchSportRecords,
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: [
+                _buildHeader(),
+                _buildChartCard(chartPoints),
+                _buildActivitySection(),
+                const SizedBox(height: 26),
+              ],
             ),
           ),
-        ],
+        ),
       ),
       bottomNavigationBar: const BottomTabBar(currentIndex: 1),
     );
+  }
+}
+
+class _CaloriePoint {
+  const _CaloriePoint({
+    required this.time,
+    required this.calories,
+    required this.isToday,
+  });
+
+  final DateTime time;
+  final double calories;
+  final bool isToday;
+}
+
+class _SportRecordEntry {
+  _SportRecordEntry({
+    required this.sportType,
+    required this.startTime,
+    required this.endTime,
+    required this.avgHeartRate,
+    required this.avgSpo2,
+    required this.avgTemp,
+    required this.calorie,
+    required this.suggestion,
+  });
+
+  final String sportType;
+  final DateTime? startTime;
+  final DateTime? endTime;
+  final int? avgHeartRate;
+  final int? avgSpo2;
+  final double? avgTemp;
+  final double? calorie;
+  final String suggestion;
+
+  Duration? get duration {
+    if (startTime == null || endTime == null) return null;
+    return endTime!.difference(startTime!);
+  }
+}
+
+class _SportDayGroup {
+  _SportDayGroup({required this.title});
+
+  final String title;
+  final List<_SportRecordEntry> items = <_SportRecordEntry>[];
+}
+
+enum _ChartAxisMode { weekday, time }
+
+class _CalorieCurvePainter extends CustomPainter {
+  _CalorieCurvePainter({
+    required this.points,
+    required this.axisMode,
+    required this.minValue,
+    required this.maxValue,
+  });
+
+  final List<_CaloriePoint> points;
+  final _ChartAxisMode axisMode;
+  final double minValue;
+  final double maxValue;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (points.isEmpty) return;
+
+    final plotTop = 10.0;
+    final plotBottom = size.height - 24;
+    final plotLeft = 28.0;
+    final plotWidth = size.width - plotLeft - 6;
+    final plotHeight = plotBottom - plotTop;
+
+    final minCalorie = math.min(minValue, maxValue);
+    final maxCalorie = math.max(minValue, maxValue);
+    final range = (maxCalorie - minCalorie).abs() < 0.001
+        ? 1.0
+        : (maxCalorie - minCalorie);
+
+    final sorted = [...points]..sort((a, b) => a.time.compareTo(b.time));
+    final minTime = sorted.first.time;
+    final maxTime = sorted.last.time;
+    final timeSpan = math.max(1, maxTime.difference(minTime).inSeconds);
+
+    final axisPaint = Paint()
+      ..color = AppColors.primaryLight.withValues(alpha: 0.8)
+      ..strokeWidth = 1;
+
+    final unitPainter = TextPainter(
+      text: TextSpan(
+        text: '千卡',
+        style: TextStyle(
+          color: AppColors.textBody,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      textDirection: ui.TextDirection.ltr,
+    )..layout();
+    unitPainter.paint(canvas, const Offset(0, -24));
+
+    const tickCount = 4;
+    final labelStyle = const TextStyle(
+      color: AppColors.textBody,
+      fontSize: 10,
+      fontWeight: FontWeight.w500,
+    );
+    for (var i = 0; i < tickCount; i++) {
+      final ratio = i / (tickCount - 1);
+      final y = plotTop + (plotHeight * ratio);
+      canvas.drawLine(Offset(plotLeft, y), Offset(size.width, y), axisPaint);
+
+      final value = maxCalorie - (range * ratio);
+      final textPainter = TextPainter(
+        text: TextSpan(text: value.toStringAsFixed(0), style: labelStyle),
+        textDirection: ui.TextDirection.ltr,
+      )..layout();
+      textPainter.paint(canvas, Offset(0, y - textPainter.height / 2));
+    }
+
+    final path = Path();
+    final pointPositions = <Offset>[];
+    for (final point in sorted) {
+      final secondsFromStart = point.time.difference(minTime).inSeconds;
+      final x = points.length == 1
+          ? plotLeft + plotWidth / 2
+          : plotLeft + (secondsFromStart / timeSpan) * plotWidth;
+      final normalized = (point.calories - minCalorie) / range;
+      final stretchedNormalized =
+          (0.5 + (normalized - 0.5) * 1.4).clamp(0.0, 1.0).toDouble();
+      final y = plotBottom - (normalized * plotHeight);
+      final stretchedY = plotBottom - (stretchedNormalized * plotHeight);
+      pointPositions.add(Offset(x, stretchedY));
+    }
+
+    path.moveTo(pointPositions.first.dx, pointPositions.first.dy);
+    for (var i = 1; i < pointPositions.length; i++) {
+      final previous = pointPositions[i - 1];
+      final current = pointPositions[i];
+      final control = Offset((previous.dx + current.dx) / 2, previous.dy);
+      path.quadraticBezierTo(control.dx, control.dy, current.dx, current.dy);
+    }
+
+    final fillPath = Path.from(path)
+      ..lineTo(size.width, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+
+    final fillPaint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          AppColors.primary.withValues(alpha: 0.32),
+          AppColors.primary.withValues(alpha: 0.06),
+        ],
+      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
+    canvas.drawPath(fillPath, fillPaint);
+
+    final strokePaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.6
+      ..color = AppColors.primaryDark
+      ..isAntiAlias = true;
+    canvas.drawPath(path, strokePaint);
+
+    for (final marker in pointPositions) {
+      canvas.drawLine(
+        Offset(marker.dx, plotBottom),
+        Offset(marker.dx, marker.dy),
+        Paint()
+          ..color = AppColors.primaryLight.withValues(alpha: 0.8)
+          ..strokeWidth = 1,
+      );
+      canvas.drawCircle(
+        marker,
+        4.2,
+        Paint()..color = AppColors.primary,
+      );
+    }
+
+    final todayIndex = points.lastIndexWhere((e) => e.isToday);
+    if (todayIndex >= 0) {
+      final marker = pointPositions[todayIndex];
+      final markerPaint = Paint()..color = AppColors.primaryDark;
+
+      canvas.drawLine(
+        Offset(marker.dx, marker.dy),
+        Offset(marker.dx, size.height),
+        Paint()
+          ..color = AppColors.primaryDark.withValues(alpha: 0.6)
+          ..strokeWidth = 1,
+      );
+      canvas.drawCircle(marker, 5.8, markerPaint);
+      canvas.drawCircle(
+        marker,
+        9,
+        Paint()..color = AppColors.primaryDark.withValues(alpha: 0.3),
+      );
+    }
+
+    final labelMap = <int, String>{
+      DateTime.monday: '星期一',
+      DateTime.tuesday: '星期二',
+      DateTime.wednesday: '星期三',
+      DateTime.thursday: '星期四',
+      DateTime.friday: '星期五',
+      DateTime.saturday: '星期六',
+      DateTime.sunday: '星期日',
+    };
+
+    for (var i = 0; i < sorted.length; i++) {
+      final point = sorted[i];
+      final x = pointPositions[i].dx;
+      final label = axisMode == _ChartAxisMode.weekday
+          ? (labelMap[point.time.weekday] ?? '星期?')
+          : DateFormat('HH:mm').format(point.time);
+
+      final textPainter = TextPainter(
+        text: TextSpan(
+          text: label,
+          style: const TextStyle(
+            color: AppColors.textBody,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        textDirection: ui.TextDirection.ltr,
+        maxLines: 1,
+      )..layout();
+
+      final labelWidth = textPainter.width;
+      final labelHeight = textPainter.height;
+      final dx = math.max(
+        plotLeft - 4,
+        math.min(x - labelWidth / 2, size.width - labelWidth),
+      );
+
+      canvas.save();
+      canvas.translate(dx + labelWidth / 2, plotBottom + 10);
+      canvas.rotate(-0.72);
+      textPainter.paint(
+        canvas,
+        Offset(-labelWidth / 2, -labelHeight / 2),
+      );
+      canvas.restore();
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _CalorieCurvePainter oldDelegate) {
+    return oldDelegate.points != points ||
+        oldDelegate.axisMode != axisMode ||
+        oldDelegate.minValue != minValue ||
+        oldDelegate.maxValue != maxValue;
   }
 }

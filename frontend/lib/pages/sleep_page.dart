@@ -1,11 +1,12 @@
-// Sleep page
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import '../component/bottom_tab_bar.dart';
 import 'package:get/get.dart';
+
 import '../api/api_service.dart';
 import '../controller/auth_controller.dart';
+import '../component/bottom_tab_bar.dart';
 
 class SleepPage extends StatefulWidget {
   const SleepPage({super.key});
@@ -14,19 +15,17 @@ class SleepPage extends StatefulWidget {
   State<SleepPage> createState() => _SleepPageState();
 }
 
-class _SleepPageState extends State<SleepPage> {
+class _SleepPageState extends State<SleepPage>
+    with SingleTickerProviderStateMixin {
   final ApiService _apiService = ApiService();
   final AuthController _authController = Get.find<AuthController>();
 
-  // 用户信息
-  String userName = '';
-  int? userAge;
-  double? userWeight;
-  double? userHeight;
+  late final AnimationController _pulseController;
+  late final Animation<double> _pulseAnimation;
 
-  // 表单控制器
-  final TextEditingController startController = TextEditingController();
-  final TextEditingController endController = TextEditingController();
+  bool _isSleeping = false;
+  bool _submitting = false;
+  DateTime? _sleepStartAt;
 
   // 睡眠记录
   List<Map<String, dynamic>> sleepRecords = [];
@@ -35,22 +34,21 @@ class _SleepPageState extends State<SleepPage> {
   @override
   void initState() {
     super.initState();
-    fetchUserInfo();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1600),
+    )..repeat(reverse: true);
+    _pulseAnimation = CurvedAnimation(
+      parent: _pulseController,
+      curve: Curves.easeInOut,
+    );
     fetchSleepRecords();
   }
 
-  Future<void> fetchUserInfo() async {
-    final resp = await _apiService.getUserInfo();
-    if (resp["code"] == 200) {
-      setState(() {
-        userName = resp["data"]["username"] ?? '';
-        userAge = resp["data"]["age"];
-        userWeight = resp["data"]["weight"];
-        userHeight = resp["data"]["height"];
-      });
-    } else {
-      Get.snackbar('获取用户信息失败', resp["msg"] ?? "未知错误");
-    }
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    super.dispose();
   }
 
   Future<void> fetchSleepRecords() async {
@@ -61,6 +59,7 @@ class _SleepPageState extends State<SleepPage> {
       _authController.userId.value,
       limit: 7,
     );
+    if (!mounted) return;
     setState(() {
       loading = false;
       if (resp["code"] == 200) {
@@ -73,255 +72,291 @@ class _SleepPageState extends State<SleepPage> {
     });
   }
 
-  Future<void> uploadSleepRecord() async {
-    final start = startController.text;
-    final end = endController.text;
+  void _startSleep() {
+    setState(() {
+      _isSleeping = true;
+      _sleepStartAt = DateTime.now();
+    });
+  }
 
-    if (start.isEmpty || end.isEmpty) {
-      Get.snackbar('提示', '请填写入睡时间和起床时间');
+  Future<void> _endSleep() async {
+    final startedAt = _sleepStartAt;
+    if (startedAt == null) {
+      setState(() {
+        _isSleeping = false;
+      });
+      return;
+    }
+
+    final elapsed = DateTime.now().difference(startedAt);
+    if (elapsed.inSeconds < 180) {
+      final shouldEnd = await Get.dialog<bool>(
+        AlertDialog(
+          backgroundColor: const Color(0xFF2C2344),
+          title: const Text(
+            '睡眠时间不足',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+          ),
+          content: Text(
+            '睡眠不足3分钟，记录不会保存。\n是否仍要结束睡眠？',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.85),
+              height: 1.4,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Get.back(result: false),
+              child:
+                  const Text('继续睡眠', style: TextStyle(color: Colors.white70)),
+            ),
+            ElevatedButton(
+              onPressed: () => Get.back(result: true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFFE23A),
+                foregroundColor: Colors.black,
+              ),
+              child: const Text('结束并放弃记录'),
+            ),
+          ],
+        ),
+        barrierDismissible: false,
+      );
+
+      if (!mounted) return;
+      if (shouldEnd != true) {
+        return;
+      }
+
+      setState(() {
+        _isSleeping = false;
+        _sleepStartAt = null;
+      });
       return;
     }
 
     setState(() {
-      loading = true;
+      _submitting = true;
     });
 
-    // 后端期望的时间格式带秒，前端只展示到分钟
-    String normalize(String s) {
-      try {
-        final dt = DateFormat('yyyy-MM-dd HH:mm').parse(s);
-        return DateFormat('yyyy-MM-dd HH:mm:ss').format(dt);
-      } catch (_) {
-        try {
-          final dt = DateFormat('yyyy-MM-dd HH:mm:ss').parse(s);
-          return DateFormat('yyyy-MM-dd HH:mm:ss').format(dt);
-        } catch (_) {}
-      }
-      return s;
-    }
-
+    final endedAt = DateTime.now();
     final resp = await _apiService.uploadSleepRecord({
       'user_id': _authController.userId.value,
-      'sleep_start': normalize(start),
-      'sleep_end': normalize(end),
+      'sleep_start': DateFormat('yyyy-MM-dd HH:mm:ss').format(startedAt),
+      'sleep_end': DateFormat('yyyy-MM-dd HH:mm:ss').format(endedAt),
     });
 
+    if (!mounted) return;
+
     setState(() {
-      loading = false;
+      _submitting = false;
     });
 
     if (resp["code"] == 200) {
       Get.snackbar('上传成功', '睡眠记录已上传');
-      // 清空表单
-      startController.clear();
-      endController.clear();
+      setState(() {
+        _isSleeping = false;
+        _sleepStartAt = null;
+      });
       fetchSleepRecords();
     } else {
       Get.snackbar('上传失败', resp["msg"] ?? "未知错误");
     }
   }
 
-  Widget buildProfile() {
+  String _formatClock(DateTime? time) {
+    if (time == null) return '--';
+    return DateFormat('HH:mm').format(time);
+  }
+
+  Widget _buildHeader() {
     return Column(
       children: [
-        const SizedBox(height: 40),
-        Stack(
-          alignment: Alignment.center,
-          children: [
-            Container(
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  colors: [Colors.blue.shade300, Colors.purple.shade400],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-              ),
-              child: const CircleAvatar(
-                radius: 50,
-                backgroundColor: Colors.transparent,
-                child:
-                    Icon(Icons.nightlight_round, size: 40, color: Colors.white),
-              ),
-            ),
-            Positioned(
-              bottom: 0,
-              right: 0,
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.yellow,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 2),
-                ),
-                padding: const EdgeInsets.all(6),
-                child: const Icon(Icons.edit, size: 18, color: Colors.black),
-              ),
-            ),
-          ],
+        const SizedBox(height: 24),
+        Text(
+          _isSleeping ? '睡眠中' : '睡眠记录',
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 28,
+            fontWeight: FontWeight.w800,
+          ),
         ),
-        const SizedBox(height: 16),
-        Text(userName.isNotEmpty ? userName : '未设置',
-            style: const TextStyle(
-                fontSize: 22,
-                color: Colors.white,
-                fontWeight: FontWeight.bold)),
-        const SizedBox(height: 4),
-        if (userAge != null)
-          Text('$userAge岁',
-              style: const TextStyle(fontSize: 14, color: Colors.white70)),
-        const SizedBox(height: 2),
-        if (userWeight != null)
-          Text('${userWeight}kg',
-              style: const TextStyle(fontSize: 16, color: Colors.white)),
-        const SizedBox(height: 2),
-        if (userHeight != null)
-          Text('${userHeight}cm',
-              style: const TextStyle(fontSize: 16, color: Colors.white)),
       ],
     );
   }
 
-  Widget buildSleepForm() {
-    return Card(
-      color: Colors.white.withOpacity(0.08),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildSleepFlowCard() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 260),
+        child: _isSleeping ? _buildSleepingState() : _buildStartState(),
+      ),
+    );
+  }
+
+  Widget _buildStartState() {
+    return Column(
+      key: const ValueKey('sleep-start'),
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 120,
+          height: 120,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: LinearGradient(
+              colors: [Colors.blue.shade300, Colors.purple.shade400],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+          child: const Icon(
+            Icons.nightlight_round,
+            size: 64,
+            color: Colors.white,
+          ),
+        ),
+        const SizedBox(height: 22),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: _startSleep,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFFE23A),
+              foregroundColor: Colors.black,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+            child: const Text(
+              '开始睡眠',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSleepingState() {
+    return Column(
+      key: const ValueKey('sleeping'),
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          '开始时间  ${_formatClock(_sleepStartAt)}',
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.75),
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Stack(
           children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.yellow.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child:
-                      const Icon(Icons.bedtime, color: Colors.yellow, size: 24),
-                ),
-                const SizedBox(width: 12),
-                const Text('上传睡眠记录',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold)),
-              ],
-            ),
-            const SizedBox(height: 16),
-            buildDateTimeField(startController, '入睡时间', Icons.nightlight),
-            const SizedBox(height: 8),
-            buildDateTimeField(endController, '起床时间', Icons.wb_sunny),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.yellow.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.yellow.withOpacity(0.3)),
-              ),
-              child: const Row(
-                children: [
-                  Icon(Icons.info_outline, color: Colors.yellow, size: 18),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      '系统会根据您的睡眠时长自动计算评分和深度睡眠时间',
-                      style: TextStyle(color: Colors.yellow, fontSize: 12),
+            Center(
+              child: AnimatedBuilder(
+                animation: _pulseAnimation,
+                builder: (context, _) {
+                  final value = _pulseAnimation.value;
+                  return Container(
+                    width: 170 + (20 * value),
+                    height: 170 + (20 * value),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: const Color(0xFF6B5BBE).withValues(alpha: 0.18),
                     ),
-                  ),
-                ],
+                  );
+                },
               ),
             ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.yellow,
-                  foregroundColor: Colors.black,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-                onPressed: loading ? null : uploadSleepRecord,
-                child: loading
-                    ? const CircularProgressIndicator(color: Colors.black)
-                    : const Text('上传睡眠记录',
-                        style: TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.bold)),
+            Center(
+              child: AnimatedBuilder(
+                animation: _pulseAnimation,
+                builder: (context, _) {
+                  final value = _pulseAnimation.value;
+                  return Transform.translate(
+                    offset: Offset(0, -8 * value),
+                    child: Container(
+                      width: 126,
+                      height: 126,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: LinearGradient(
+                          colors: [
+                            Colors.blue.shade300,
+                            Colors.purple.shade400,
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                      ),
+                      child: const Icon(
+                        Icons.nightlight_round,
+                        size: 72,
+                        color: Colors.white,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            Center(
+              child: AnimatedBuilder(
+                animation: _pulseAnimation,
+                builder: (context, _) {
+                  final value = _pulseAnimation.value;
+                  return Container(
+                    width: 220,
+                    height: 220,
+                    alignment: Alignment.center,
+                    child: CustomPaint(
+                      painter: _SleepingOrbitPainter(progress: value),
+                    ),
+                  );
+                },
               ),
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget buildDateTimeField(
-      TextEditingController controller, String label, IconData icon) {
-    return TextField(
-      controller: controller,
-      readOnly: true,
-      style: const TextStyle(color: Colors.white),
-      decoration: InputDecoration(
-        labelText: label,
-        labelStyle: const TextStyle(color: Colors.white70),
-        prefixIcon: Icon(icon, color: Colors.yellow),
-        suffixIcon: const Icon(Icons.calendar_today, color: Colors.yellow),
-        enabledBorder: OutlineInputBorder(
-          borderSide: const BorderSide(color: Colors.white24),
-          borderRadius: BorderRadius.circular(10),
+        const SizedBox(height: 12),
+        Text(
+          '睡眠中，请保持安静',
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.82),
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
         ),
-        focusedBorder: OutlineInputBorder(
-          borderSide: const BorderSide(color: Colors.yellow),
-          borderRadius: BorderRadius.circular(10),
+        const SizedBox(height: 16),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: _submitting ? null : _endSleep,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.black,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+            child: _submitting
+                ? const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2.5),
+                  )
+                : const Text(
+                    '结束睡眠',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                  ),
+          ),
         ),
-        fillColor: Colors.white.withOpacity(0.05),
-        filled: true,
-      ),
-      onTap: () => _pickDateTime(context, controller),
+      ],
     );
-  }
-
-  Future<void> _pickDateTime(
-      BuildContext context, TextEditingController controller) async {
-    final ctx = context;
-    DateTime initial = DateTime.now();
-    try {
-      initial = DateFormat('yyyy-MM-dd HH:mm').parse(controller.text);
-    } catch (_) {
-      try {
-        initial = DateFormat('yyyy-MM-dd HH:mm:ss').parse(controller.text);
-      } catch (_) {}
-    }
-
-    final date = await showDatePicker(
-      context: ctx,
-      initialDate: initial,
-      firstDate: DateTime(2000),
-      lastDate: DateTime(2100),
-    );
-    if (!mounted) return;
-    if (date == null) return;
-
-    final time = await showTimePicker(
-      context: ctx,
-      initialTime: TimeOfDay.fromDateTime(initial),
-    );
-    if (!mounted) return;
-    if (time == null) return;
-
-    final selected = DateTime(
-      date.year,
-      date.month,
-      date.day,
-      time.hour,
-      time.minute,
-    );
-    controller.text = DateFormat('yyyy-MM-dd HH:mm').format(selected);
   }
 
   Widget buildSleepRecords() {
@@ -401,6 +436,34 @@ class _SleepPageState extends State<SleepPage> {
     }
   }
 
+  DateTime? _parseDateTime(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      return DateFormat('yyyy-MM-dd HH:mm:ss').parse(raw);
+    } catch (_) {
+      try {
+        return DateFormat('yyyy-MM-dd HH:mm').parse(raw);
+      } catch (_) {
+        return null;
+      }
+    }
+  }
+
+  String _formatCompactDuration(Duration? duration) {
+    if (duration == null || duration.inSeconds <= 0) return '--';
+
+    final roundedMinutes = (duration.inSeconds + 30) ~/ 60;
+    if (roundedMinutes <= 0) return '--';
+
+    final hours = roundedMinutes ~/ 60;
+    final minutes = roundedMinutes % 60;
+
+    if (hours > 0) {
+      return minutes > 0 ? '${hours}h${minutes}min' : '${hours}h';
+    }
+    return '${minutes}min';
+  }
+
   String _getScoreQuality(int score) {
     if (score >= 85) return '优秀';
     if (score >= 70) return '良好';
@@ -409,8 +472,9 @@ class _SleepPageState extends State<SleepPage> {
   }
 
   Widget buildSleepRecordItem(Map<String, dynamic> record) {
+    final sleepStartRaw = record['sleep_start']?.toString();
+    final sleepEndRaw = record['sleep_end']?.toString();
     final start = _formatDateTime(record['sleep_start']?.toString());
-    final end = _formatDateTime(record['sleep_end']?.toString());
     final score = record['sleep_score'] ?? 0;
     final deepSleep = record['deep_sleep_duration'] ?? 0;
     final avgHeartRate = record['avg_heart_rate'] ?? '--';
@@ -418,13 +482,17 @@ class _SleepPageState extends State<SleepPage> {
     final avgTemp = record['avg_temp'] ?? '--';
     final suggestion = record['suggestion'] ?? '';
 
-    // 计算睡眠时长
-    String durationText = '';
-    if (record['sleep_duration_hours'] != null) {
-      durationText = '${record['sleep_duration_hours']}小时';
-    } else if (record['sleep_duration'] != null) {
-      durationText = '${(record['sleep_duration'] / 60).toStringAsFixed(1)}小时';
+    // 根据后端返回的开始/结束时间计算时长
+    final startTime = _parseDateTime(sleepStartRaw);
+    final endTime = _parseDateTime(sleepEndRaw);
+    Duration? duration;
+    if (startTime != null && endTime != null) {
+      duration = endTime.difference(startTime);
+      if (duration.inSeconds < 0) {
+        duration = duration + const Duration(days: 1);
+      }
     }
+    final durationText = _formatCompactDuration(duration);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -443,7 +511,7 @@ class _SleepPageState extends State<SleepPage> {
             children: [
               Expanded(
                 child: Text(
-                  '$start - $end',
+                  '$start   $durationText',
                   style: const TextStyle(color: Colors.white70, fontSize: 13),
                 ),
               ),
@@ -464,16 +532,9 @@ class _SleepPageState extends State<SleepPage> {
             ],
           ),
           const SizedBox(height: 8),
-          // 睡眠时长和深睡
+          // 深睡
           Row(
             children: [
-              Icon(Icons.timer, size: 14, color: Colors.yellow.shade700),
-              const SizedBox(width: 4),
-              Text(
-                '时长: $durationText',
-                style: const TextStyle(color: Colors.white, fontSize: 13),
-              ),
-              const SizedBox(width: 12),
               Icon(Icons.night_shelter, size: 14, color: Colors.blue.shade300),
               const SizedBox(width: 4),
               Text(
@@ -553,8 +614,8 @@ class _SleepPageState extends State<SleepPage> {
         child: SingleChildScrollView(
           child: Column(
             children: [
-              buildProfile(),
-              buildSleepForm(),
+              _buildHeader(),
+              _buildSleepFlowCard(),
               buildSleepRecords(),
               const SizedBox(height: 24),
             ],
@@ -563,5 +624,41 @@ class _SleepPageState extends State<SleepPage> {
       ),
       bottomNavigationBar: const BottomTabBar(currentIndex: 2),
     );
+  }
+}
+
+class _SleepingOrbitPainter extends CustomPainter {
+  _SleepingOrbitPainter({required this.progress});
+
+  final double progress;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final ringPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2
+      ..color = Colors.white.withValues(alpha: 0.16);
+
+    for (var i = 0; i < 3; i++) {
+      final radius = 48 + i * 18 + progress * 6;
+      canvas.drawCircle(center, radius, ringPaint);
+    }
+
+    final dotPaint = Paint()..color = const Color(0xFFFFE23A);
+    for (var i = 0; i < 5; i++) {
+      final angle = (progress * 2 * 3.141592653589793) + (i * 1.2);
+      final orbit = 70 + i * 5;
+      final point = Offset(
+        center.dx + orbit * 0.62 * math.cos(angle),
+        center.dy + orbit * 0.42 * math.sin(angle),
+      );
+      canvas.drawCircle(point, 3.2 - (i * 0.2), dotPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _SleepingOrbitPainter oldDelegate) {
+    return oldDelegate.progress != progress;
   }
 }

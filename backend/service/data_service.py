@@ -6,10 +6,12 @@ from repository.physio_repo import (
     get_sleep_record_by_user,
     insert_sport_record,
     get_sport_record_by_user,
+    get_sport_calendar_by_user,
 )
 from repository.user_repo import get_user_by_id
 from utils.sport_calculator import calculate_calorie
 from utils.ai_util import generate_sport_suggestion_ai
+from calendar import monthrange
 
 
 # 上传生理数据（新版本）
@@ -121,8 +123,7 @@ def upload_sleep_record_service(
     sleep_start: str,
     sleep_end: str,
 ):
-    from datetime import datetime
-    import random
+    from datetime import datetime, timedelta
 
     # 1. 获取用户个人信息（用于AI建议）
     user_info = get_user_by_id(user_id)
@@ -140,13 +141,12 @@ def upload_sleep_record_service(
 
         # 如果结束时间小于开始时间，说明跨天了
         if end_time < start_time:
-            # 假设最多跨一天，加上一天
-            end_time = end_time.replace(day=end_time.day + 1)
+            end_time = end_time + timedelta(days=1)
 
         total_minutes = int((end_time - start_time).total_seconds() / 60)
 
-        if total_minutes <= 0:
-            return {"status": "error", "msg": "睡眠时长计算失败，请检查时间格式"}
+        if total_minutes < 3:
+            return {"status": "error", "msg": "睡眠时长不足3分钟，记录不会保存"}
 
         # 转换为小时
         total_hours = round(total_minutes / 60, 1)
@@ -267,7 +267,10 @@ def upload_sport_record_service(
     )
 
     if duration_minutes <= 0:
-        return {"status": "error", "msg": "运动时长计算失败，请检查时间格式"}
+        return {
+            "status": "error",
+            "msg": "运动时长无效，请先点击开始并在结束前保持至少几秒",
+        }
 
     # 3. 模拟生理数据
     avg_heart_rate = 120
@@ -319,22 +322,48 @@ def get_sport_record_service(user_id: int, limit: int = 7):
     return {"status": "success", "data": data}
 
 
-# 生成模拟生理数据（硬件替代）
-def generate_mock_physio_data(user_id: int, scene: int = 0):
-    import random
+def get_sport_calendar_service(user_id: int, year: int, month: int):
+    raw_days = get_sport_calendar_by_user(user_id, year, month)
+    days_in_month = monthrange(year, month)[1]
 
-    # 模拟不同场景的生理数据
-    if scene == 0:  # 静息
-        heart_rate = random.randint(60, 80)
-        spo2 = random.randint(95, 99)
-        temp = round(random.uniform(36.0, 36.8), 1)
-    elif scene == 1:  # 运动
-        heart_rate = random.randint(100, 150)
-        spo2 = random.randint(90, 95)
-        temp = round(random.uniform(36.8, 37.5), 1)
-    else:  # 睡眠
-        heart_rate = random.randint(50, 70)
-        spo2 = random.randint(96, 100)
-        temp = round(random.uniform(35.8, 36.5), 1)
-    # 插入模拟数据
-    return insert_physio_data(user_id, heart_rate, spo2, temp, scene)
+    day_map = {}
+    for item in raw_days:
+        sport_date = item.get("sport_date")
+        if not sport_date:
+            continue
+        day_map[int(sport_date[-2:])] = item
+
+    days = []
+    month_total_calorie = 0.0
+    month_total_count = 0
+    month_max_calorie = 0.0
+
+    for day in range(1, days_in_month + 1):
+        item = day_map.get(day)
+        calorie = float(item.get("total_calorie", 0)) if item else 0.0
+        workout_count = int(item.get("workout_count", 0)) if item else 0
+        month_total_calorie += calorie
+        month_total_count += workout_count
+        month_max_calorie = max(month_max_calorie, calorie)
+        days.append(
+            {
+                "date": f"{year:04d}-{month:02d}-{day:02d}",
+                "day": day,
+                "workout_count": workout_count,
+                "total_calorie": round(calorie, 1),
+                "has_workout": workout_count > 0,
+            }
+        )
+
+    return {
+        "status": "success",
+        "data": {
+            "year": year,
+            "month": month,
+            "days_in_month": days_in_month,
+            "month_total_calorie": round(month_total_calorie, 1),
+            "month_total_count": month_total_count,
+            "month_max_calorie": round(month_max_calorie, 1),
+            "days": days,
+        },
+    }

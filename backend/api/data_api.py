@@ -8,8 +8,9 @@ from service.data_service import (
     get_sleep_record_service,
     upload_sport_record_service,
     get_sport_record_service,
-    generate_mock_physio_data,
+    get_sport_calendar_service,
 )
+from repository.iot_repo import get_latest_device_event, get_recent_iot_raw_events
 
 router = APIRouter()
 
@@ -57,21 +58,6 @@ async def query_physio_data(user_id: int, limit: int = Query(default=10, ge=1, l
         "code": 200,
         "msg": "查询成功",
         "data": result["data"],  # 现在包含 suggestion 字段
-    }
-
-
-# 生成模拟生理数据（替代硬件，前端可直接调用）
-@router.get("/mock/physio")
-async def mock_physio_data(
-    user_id: int, scene: int = Query(default=0, ge=0, le=2)  # 0=静息 1=运动 2=睡眠
-):
-    result = generate_mock_physio_data(user_id=user_id, scene=scene)
-    if result["status"] == "error":
-        raise HTTPException(status_code=400, detail=result["msg"])
-    return {
-        "code": 200,
-        "msg": f"模拟{['静息','运动','睡眠'][scene]}生理数据生成成功",
-        "data": None,
     }
 
 
@@ -177,3 +163,32 @@ async def query_sport_record(
         "msg": "查询成功",
         "data": result["data"],  # 现在包含所有新字段
     }
+
+
+@router.get("/query/sport/calendar")
+async def query_sport_calendar(
+    user_id: int,
+    year: int = Query(..., ge=2000, le=2100),
+    month: int = Query(..., ge=1, le=12),
+):
+    result = get_sport_calendar_service(user_id=user_id, year=year, month=month)
+    return {
+        "code": 200,
+        "msg": "查询成功",
+        "data": result["data"],
+    }
+
+
+# ==================== 物联网接入接口 ====================
+@router.get("/iot/latest")
+async def query_iot_latest(device_id: str | None = None):
+    result = get_latest_device_event(device_id=device_id)
+    return {"code": 200, "msg": "查询成功", "data": result}
+
+
+@router.get("/iot/raw")
+async def query_iot_raw(
+    device_id: str | None = None, limit: int = Query(default=20, ge=1, le=200)
+):
+    result = get_recent_iot_raw_events(device_id=device_id, limit=limit)
+    return {"code": 200, "msg": "查询成功", "data": result}

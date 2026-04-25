@@ -1,5 +1,6 @@
 # 运动计算工具模块
 from datetime import datetime
+import math
 
 
 # MET值（代谢当量）表
@@ -36,14 +37,17 @@ def calculate_calorie(
         # 计算运动时长
         start_time = datetime.strptime(sport_start, "%Y-%m-%d %H:%M:%S")
         end_time = datetime.strptime(sport_end, "%Y-%m-%d %H:%M:%S")
-        duration_minutes = int((end_time - start_time).total_seconds() / 60)
+        duration_seconds = (end_time - start_time).total_seconds()
 
-        if duration_minutes <= 0:
+        if duration_seconds <= 0:
             return 0, 0.0
+
+        # 对外仍返回分钟数，但避免 60 秒内被截断为 0 分钟。
+        duration_minutes = max(1, math.ceil(duration_seconds / 60))
 
         # 计算卡路里
         met = get_met_value(sport_type)
-        duration_hours = duration_minutes / 60
+        duration_hours = duration_seconds / 3600
         calorie = met * weight * duration_hours
 
         return duration_minutes, round(calorie, 1)

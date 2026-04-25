@@ -18,6 +18,7 @@ reportlab==4.0.7          # PDF report generation for health summaries
 
 # ---------- Real-time Communication ----------
 websockets==12.0          # WebSocket support for real-time data push
+paho-mqtt==2.1.0          # MQTT client for hardware ingest
 
 # ---------- Optional (Install as needed) ----------
 # sqlalchemy==2.0.23      # Database ORM (uncomment when using databases)

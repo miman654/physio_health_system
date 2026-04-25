@@ -172,19 +172,6 @@ class ApiService {
     }
   }
 
-  // 生成模拟睡眠生理数据 /data/mock/physio
-  Future<Map<String, dynamic>> mockSleepPhysioData(int userId) async {
-    try {
-      final response = await _dio.get(
-        "/data/mock/physio",
-        queryParameters: {"user_id": userId, "scene": 2},
-      );
-      return response.data;
-    } on DioException catch (e) {
-      return {"code": -1, "msg": e.message ?? "模拟睡眠数据生成失败"};
-    }
-  }
-
   // ********************* 三、睡眠记录接口 *********************
   // 上传睡眠记录 /data/upload/sleep
   Future<Map<String, dynamic>> uploadSleepRecord(
@@ -246,19 +233,50 @@ class ApiService {
     }
   }
 
+  // 查询运动月历 /data/query/sport/calendar
+  Future<Map<String, dynamic>> querySportCalendar(
+      int userId, int year, int month) async {
+    try {
+      debugPrint("调用查询运动月历接口，userId: $userId, year: $year, month: $month");
+      final response = await _dio.get(
+        "/data/query/sport/calendar",
+        queryParameters: {"user_id": userId, "year": year, "month": month},
+      );
+      return response.data;
+    } on DioException catch (e) {
+      debugPrint("查询运动月历失败: ${e.message}");
+      return {"code": -1, "msg": e.message ?? "运动月历查询失败"};
+    }
+  }
+
+  // ********************* 六、设备监控接口 *********************
+  Future<Map<String, dynamic>> getDeviceLatest(String deviceId) async {
+    try {
+      final response = await _dio.get(
+        "/api/device/$deviceId/latest",
+      );
+      return response.data;
+    } on DioException catch (e) {
+      return {"code": -1, "msg": e.message ?? "获取设备最新态失败"};
+    }
+  }
+
+  Future<Map<String, dynamic>> getDeviceHistory(
+    String deviceId, {
+    int seconds = 600,
+  }) async {
+    try {
+      final response = await _dio.get(
+        "/api/device/$deviceId/history",
+        queryParameters: {"seconds": seconds},
+      );
+      return response.data;
+    } on DioException catch (e) {
+      return {"code": -1, "msg": e.message ?? "获取设备历史失败"};
+    }
+  }
+
   // ********************* 五、AI分析接口 *********************
-  // // AI生理数据分析 /ai/physio/analysis
-  // Future<Map<String, dynamic>> aiPhysioAnalysis(int userId) async {
-  //   try {
-  //     final response = await _dio.get(
-  //       "/ai/physio/analysis",
-  //       queryParameters: {"user_id": userId},
-  //     );
-  //     return response.data;
-  //   } on DioException catch (e) {
-  //     return {"code": -1, "msg": e.message ?? "生理数据AI分析失败"};
-  //   }
-  // }
 // AI生理数据分析 /ai/physio/analysis
   Future<Map<String, dynamic>> aiPhysioAnalysis(int userId) async {
     try {

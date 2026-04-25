@@ -1,6 +1,7 @@
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../api/api_service.dart';
+import '../api/ws_service.dart';
 import 'package:flutter/material.dart';
 import '../pages/login_page.dart';
 import '../pages/home_page.dart';
@@ -163,6 +164,7 @@ class AuthController extends GetxController {
 
     // 后台执行退出登录操作
     _apiService.logout().then((result) {
+      WsService.close();
       // 清除本地缓存
       SharedPreferences.getInstance().then((prefs) {
         prefs.remove("token");
@@ -201,6 +203,7 @@ class AuthController extends GetxController {
 
     // 后台执行注销操作
     _apiService.deleteAccount().then((result) {
+      WsService.close();
       // 清除本地缓存
       SharedPreferences.getInstance().then((prefs) {
         prefs.remove("token");
