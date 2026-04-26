@@ -58,45 +58,57 @@ def save_iot_event(
         }
     )
 
+    # 判断是否为高质量数据
+    hr = fields.get("heart_rate")
+    spo2 = fields.get("spo2")
+    is_high_quality = (
+        fields.get("contact") == 1
+        and fields.get("signal") is not None
+        and fields.get("signal") >= 0.75
+        and hr is not None
+        and 50 <= hr <= 120
+        and spo2 is not None
+        and 94.0 <= spo2 <= 100.0
+    )
+
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        display_time_ms = (
-            fields["ts_device_ms"]
-            if fields["ts_device_ms"] and fields["ts_device_ms"] > 0
-            else server_received_at
-        )
-        cursor.execute(
-            """
-            INSERT INTO iot_raw_events (
-                device_id, topic, seq, ts_device_ms, server_received_at, payload_json,
-                parse_ok, valid_temp, valid_heart_rate, valid_spo2, reason, contact, signal, ingest_error
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                fields["device_id"],
-                topic,
-                fields["seq"],
-                fields["ts_device_ms"],
-                server_received_at,
-                raw_payload,
-                1 if parse_ok else 0,
-                fields["valid_temp"],
-                fields["valid_heart_rate"],
-                fields["valid_spo2"],
-                fields["reason"],
-                fields["contact"],
-                fields["signal"],
-                ingest_error,
-            ),
-        )
-        raw_event_id = cursor.lastrowid
+        display_time_ms = server_received_at
+
+        raw_event_id = None
+        if is_high_quality:
+            cursor.execute(
+                """
+                INSERT INTO iot_raw_events (
+                    device_id, topic, seq, ts_device_ms, server_received_at, payload_json,
+                    parse_ok, valid_temp, valid_heart_rate, valid_spo2, reason, contact, signal, ingest_error
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    fields["device_id"],
+                    topic,
+                    fields["seq"],
+                    fields["ts_device_ms"],
+                    server_received_at,
+                    raw_payload,
+                    1 if parse_ok else 0,
+                    fields["valid_temp"],
+                    fields["valid_heart_rate"],
+                    fields["valid_spo2"],
+                    fields["reason"],
+                    fields["contact"],
+                    fields["signal"],
+                    ingest_error,
+                ),
+            )
+            raw_event_id = cursor.lastrowid
 
         if parse_ok and fields["device_id"] != "unknown":
             _upsert_latest(
                 cursor=cursor,
                 device_id=fields["device_id"],
-                raw_event_id=raw_event_id,
+                raw_event_id=raw_event_id,  # 可能为 None
                 seq=fields["seq"],
                 ts_device_ms=fields["ts_device_ms"],
                 server_received_at=server_received_at,
@@ -118,6 +130,7 @@ def save_iot_event(
             "status": "success",
             "raw_event_id": raw_event_id,
             "server_received_at": server_received_at,
+            "is_high_quality": is_high_quality,
         }
     except Exception:
         conn.rollback()
@@ -345,12 +358,7 @@ def get_recent_iot_raw_events(device_id: str | None = None, limit: int = 20):
 
         rows = [dict(item) for item in cursor.fetchall()]
         for row in rows:
-            ts_device = row.get("ts_device_ms")
-            row["display_time_ms"] = (
-                ts_device
-                if (ts_device and ts_device > 0)
-                else row.get("server_received_at")
-            )
+            row["display_time_ms"] = row.get("server_received_at")
             _enrich_raw_record(row)
         return rows
     finally:
@@ -373,13 +381,62 @@ def get_device_history_events(device_id: str, seconds: int = 600):
         )
         rows = [dict(item) for item in cursor.fetchall()]
         for row in rows:
-            ts_device = row.get("ts_device_ms")
-            row["display_time_ms"] = (
-                ts_device
-                if (ts_device and ts_device > 0)
-                else row.get("server_received_at")
-            )
+            row["display_time_ms"] = row.get("server_received_at")
             _enrich_raw_record(row)
         return rows
+    finally:
+        conn.close()
+
+
+def get_averaged_metrics_in_time_range(start_time_ms: int, end_time_ms: int, min_data_points: int = 3):
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT payload_json
+            FROM iot_raw_events
+            WHERE server_received_at >= ? AND server_received_at <= ?
+            ORDER BY server_received_at ASC
+            """,
+            (start_time_ms, end_time_ms),
+        )
+        rows = cursor.fetchall()
+
+        heart_rates = []
+        spo2_values = []
+        temps = []
+
+        for row in rows:
+            try:
+                payload = json.loads(row[0]) if row[0] else {}
+                hr = payload.get("heart_rate")
+                spo2 = payload.get("spo2")
+                temp = payload.get("temp")
+
+                if hr is not None and isinstance(hr, (int, float)):
+                    heart_rates.append(float(hr))
+                if spo2 is not None and isinstance(spo2, (int, float)):
+                    spo2_values.append(float(spo2))
+                if temp is not None and isinstance(temp, (int, float)):
+                    temps.append(float(temp))
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+        result = {
+            "heart_rate": None,
+            "spo2": None,
+            "temp": None,
+            "data_points": len(heart_rates),
+        }
+
+        if len(heart_rates) >= min_data_points:
+            result["heart_rate"] = round(sum(heart_rates) / len(heart_rates))
+        if len(spo2_values) >= min_data_points:
+            result["spo2"] = round(sum(spo2_values) / len(spo2_values))
+        if len(temps) >= min_data_points:
+            result["temp"] = round(sum(temps) / len(temps), 1)
+
+        return result
     finally:
         conn.close()

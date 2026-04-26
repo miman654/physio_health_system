@@ -8,6 +8,7 @@ from repository.physio_repo import (
     get_sport_record_by_user,
     get_sport_calendar_by_user,
 )
+from repository.iot_repo import get_averaged_metrics_in_time_range
 from repository.user_repo import get_user_by_id
 from utils.sport_calculator import calculate_calorie
 from utils.ai_util import generate_sport_suggestion_ai
@@ -169,10 +170,16 @@ def upload_sleep_record_service(
     # 4. 计算深度睡眠时间（默认占总睡眠的25%左右）
     deep_sleep_duration = int(total_minutes * 0.25)
 
-    # 5. 模拟生理数据（默认值）
-    avg_heart_rate = 58  # 睡眠时平均心率较低
-    avg_spo2 = 97  # 睡眠时血氧
-    avg_temp = 36.2  # 睡眠时体温略低
+    # 5. 从IoT设备获取真实生理数据
+    start_dt = datetime.strptime(sleep_start, "%Y-%m-%d %H:%M:%S")
+    end_dt = datetime.strptime(sleep_end, "%Y-%m-%d %H:%M:%S")
+    start_ms = int(start_dt.timestamp() * 1000)
+    end_ms = int(end_dt.timestamp() * 1000)
+
+    iot_metrics = get_averaged_metrics_in_time_range(start_ms, end_ms, min_data_points=3)
+    avg_heart_rate = iot_metrics.get("heart_rate")
+    avg_spo2 = iot_metrics.get("spo2")
+    avg_temp = iot_metrics.get("temp")
 
     # 6. 调用AI生成睡眠建议
     from utils.ai_util import call_deepseek_api
@@ -272,10 +279,17 @@ def upload_sport_record_service(
             "msg": "运动时长无效，请先点击开始并在结束前保持至少几秒",
         }
 
-    # 3. 模拟生理数据
-    avg_heart_rate = 120
-    avg_spo2 = 95
-    avg_temp = 37.0
+    # 3. 从IoT设备获取真实生理数据
+    from datetime import datetime
+    start_dt = datetime.strptime(sport_start, "%Y-%m-%d %H:%M:%S")
+    end_dt = datetime.strptime(sport_end, "%Y-%m-%d %H:%M:%S")
+    start_ms = int(start_dt.timestamp() * 1000)
+    end_ms = int(end_dt.timestamp() * 1000)
+
+    iot_metrics = get_averaged_metrics_in_time_range(start_ms, end_ms, min_data_points=3)
+    avg_heart_rate = iot_metrics.get("heart_rate")
+    avg_spo2 = iot_metrics.get("spo2")
+    avg_temp = iot_metrics.get("temp")
 
     # 4. 调用AI生成运动建议
     suggestion = generate_sport_suggestion_ai(
@@ -319,6 +333,41 @@ def upload_sport_record_service(
 # 查询运动记录
 def get_sport_record_service(user_id: int, limit: int = 7):
     data = get_sport_record_by_user(user_id, limit)
+    return {"status": "success", "data": data}
+
+
+def get_sport_week_service(user_id: int):
+    from repository.physio_repo import get_sport_record_by_user
+    records = get_sport_record_by_user(user_id, limit=100)
+
+    from datetime import datetime, timedelta
+    today = datetime.now()
+    week_start = today - timedelta(days=today.weekday() - 1)
+    week_start = datetime(week_start.year, week_start.month, week_start.day)
+
+    daily_calories = {i: 0.0 for i in range(7)}
+
+    for record in records:
+        sport_start_str = record.get("sport_start")
+        if not sport_start_str:
+            continue
+        try:
+            sport_start = datetime.strptime(sport_start_str, "%Y-%m-%d %H:%M:%S")
+            if sport_start >= week_start and sport_start < week_start + timedelta(days=7):
+                day_index = sport_start.weekday() - 1
+                if day_index < 0:
+                    day_index = 6
+                calorie = record.get("calorie") or 0
+                daily_calories[day_index] += float(calorie)
+        except (ValueError, TypeError):
+            continue
+
+    weekdays = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+    data = [
+        {"weekday": weekdays[i], "calorie": round(daily_calories[i], 1)}
+        for i in range(7)
+    ]
+
     return {"status": "success", "data": data}
 
 

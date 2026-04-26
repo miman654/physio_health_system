@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:url_strategy/url_strategy.dart';
 // 导入页面文件
 import 'pages/login_page.dart';
 import 'pages/home_page.dart';
@@ -11,12 +12,17 @@ import 'pages/device_monitor_page.dart';
 // 导入控制器（如果需要提前初始化）
 import 'controller/auth_controller.dart';
 import 'controller/data_controller.dart';
+import 'controller/sleep_controller.dart';
 import 'utils/color.dart';
 
 void main() {
+  // 设置URL策略，去除#号
+  setPathUrlStrategy();
+
   // 先注册控制器，再运行app
   Get.put(AuthController(), permanent: true); // permanent: true 表示永久保存
   Get.put(DataController(), permanent: true);
+  Get.put(SleepController(), permanent: true); // 永久保存睡眠状态
   runApp(const MyApp());
 }
 
@@ -34,7 +40,6 @@ class MyApp extends StatelessWidget {
           seedColor: AppColors.primary,
           primary: AppColors.primary,
           secondary: AppColors.primaryDark,
-          background: AppColors.background,
           surface: AppColors.card,
         ),
         appBarTheme: const AppBarTheme(

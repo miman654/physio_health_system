@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -7,6 +8,15 @@ import '../api/api_service.dart';
 import '../component/realtime_physio_card.dart';
 import '../controller/data_controller.dart';
 import '../model/device_telemetry.dart';
+
+enum _TrendMetric { heartRate, spo2, temp }
+
+class _TrendPoint {
+  final int timestamp;
+  final double value;
+
+  const _TrendPoint({required this.timestamp, required this.value});
+}
 
 class DeviceMonitorPage extends StatefulWidget {
   const DeviceMonitorPage({super.key});
@@ -26,6 +36,7 @@ class _DeviceMonitorPageState extends State<DeviceMonitorPage> {
   int _historyWindowSeconds = 600;
   DeviceLatestSnapshot? _latest;
   List<DeviceHistoryPoint> _history = [];
+  _TrendMetric _selectedTrendMetric = _TrendMetric.heartRate;
 
   @override
   void initState() {
@@ -116,7 +127,7 @@ class _DeviceMonitorPageState extends State<DeviceMonitorPage> {
             slivers: [
               SliverToBoxAdapter(
                 child: Container(
-                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
                   decoration: const BoxDecoration(
                     gradient: LinearGradient(
                       colors: [Color(0xff0b1220), Color(0xff13233d)],
@@ -164,7 +175,7 @@ class _DeviceMonitorPageState extends State<DeviceMonitorPage> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 18),
+                      const SizedBox(height: 8),
                       _buildInputPanel(),
                       if (_errorMessage != null) ...[
                         const SizedBox(height: 14),
@@ -182,7 +193,7 @@ class _DeviceMonitorPageState extends State<DeviceMonitorPage> {
                       : Column(
                           children: [
                             _buildLatestPanel(),
-                            const SizedBox(height: 18),
+                            const SizedBox(height: 6),
                             _buildTrendPanel(),
                             const SizedBox(height: 18),
                             _buildHistoryList(),
@@ -198,88 +209,144 @@ class _DeviceMonitorPageState extends State<DeviceMonitorPage> {
   }
 
   Widget _buildInputPanel() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withOpacity(0.12)),
-      ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            '设备与时间窗口',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                flex: 2,
-                child: TextField(
-                  controller: _deviceIdController,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: _inputDecoration('设备 ID，例如 hi3861-01'),
-                  onSubmitted: (_) => _loadData(),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: InkWell(
-                  onTap: _showHistoryWindowPicker,
-                  borderRadius: BorderRadius.circular(14),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 14),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.06),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: Colors.white.withOpacity(0.08)),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isCompact = constraints.maxWidth <= 412;
+
+              if (isCompact) {
+                final deviceFieldWidth = _compactDeviceFieldWidth(context);
+                final spacing = 12.0;
+                final windowWidth =
+                    (constraints.maxWidth - deviceFieldWidth - spacing)
+                        .clamp(0.0, constraints.maxWidth);
+
+                return Row(
+                  children: [
+                    SizedBox(
+                      width: deviceFieldWidth,
+                      child: TextField(
+                        controller: _deviceIdController,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: _inputDecoration('设备 ID，例如 hi3861-01'),
+                        onSubmitted: (_) => _loadData(),
+                      ),
                     ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.schedule,
-                            color: Colors.white70, size: 18),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            _historyWindowLabel,
-                            style: const TextStyle(color: Colors.white),
+                    const SizedBox(width: 12),
+                    SizedBox(
+                      width: windowWidth,
+                      child: InkWell(
+                        onTap: _showHistoryWindowPicker,
+                        borderRadius: BorderRadius.circular(14),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 14),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.06),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                                color: Colors.white.withOpacity(0.08)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.schedule,
+                                  color: Colors.white70, size: 18),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _historyWindowLabel,
+                                  maxLines: 1,
+                                  softWrap: false,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(color: Colors.white),
+                                ),
+                              ),
+                              const Icon(Icons.expand_more,
+                                  color: Colors.white54),
+                            ],
                           ),
                         ),
-                        const Icon(Icons.expand_more, color: Colors.white54),
-                      ],
+                      ),
+                    ),
+                  ],
+                );
+              }
+
+              return Row(
+                children: [
+                  Expanded(
+                    flex: 2,
+                    child: TextField(
+                      controller: _deviceIdController,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: _inputDecoration('设备 ID，例如 hi3861-01'),
+                      onSubmitted: (_) => _loadData(),
                     ),
                   ),
-                ),
-              ),
-            ],
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: InkWell(
+                      onTap: _showHistoryWindowPicker,
+                      borderRadius: BorderRadius.circular(14),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 14),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.06),
+                          borderRadius: BorderRadius.circular(14),
+                          border:
+                              Border.all(color: Colors.white.withOpacity(0.08)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.schedule,
+                                color: Colors.white70, size: 18),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _historyWindowLabel,
+                                maxLines: 1,
+                                softWrap: false,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(color: Colors.white),
+                              ),
+                            ),
+                            const Icon(Icons.expand_more,
+                                color: Colors.white54),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
           const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: _loading ? null : _loadData,
-              icon: const Icon(Icons.play_arrow),
-              label: Text(_loading ? '刷新中...' : '刷新数据'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xff2d7ff9),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-            ),
-          ),
         ],
       ),
     );
+  }
+
+  double _compactDeviceFieldWidth(BuildContext context) {
+    final painter = TextPainter(
+      text: const TextSpan(
+        text: 'hi3861-01',
+        style: TextStyle(fontSize: 16),
+      ),
+      textDirection: Directionality.of(context),
+      maxLines: 1,
+    )..layout();
+
+    const horizontalPadding = 14.0 * 2;
+    const borderWidth = 2.0;
+    const caretAndBuffer = 18.0;
+
+    return painter.width + horizontalPadding + borderWidth + caretAndBuffer;
   }
 
   Widget _buildLatestPanel() {
@@ -302,95 +369,396 @@ class _DeviceMonitorPageState extends State<DeviceMonitorPage> {
   }
 
   Widget _buildTrendPanel() {
-    final hasData = _history.isNotEmpty;
+    final metric = _selectedTrendMetric;
+    final points = _trendPoints(metric);
+    final average = _averageValue(points);
+    final metricLabel = _trendMetricLabel(metric);
+    final metricUnit = _trendMetricUnit(metric);
+    final metricColor = _trendMetricColor(metric);
+    final valueText =
+        average == null ? '--' : _formatTrendValue(average, metric);
+
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
       decoration: BoxDecoration(
         color: const Color(0xff111a2e),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(22),
         border: Border.all(color: Colors.white.withOpacity(0.08)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(Icons.show_chart, color: Color(0xffa78bfa)),
-              SizedBox(width: 8),
-              Text(
-                '最近趋势',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
+              const Icon(Icons.show_chart, color: Color(0xffa78bfa)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '平均$metricLabel $valueText $metricUnit',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 14),
-          if (!hasData)
-            const Text(
-              '暂无历史数据',
-              style: TextStyle(color: Colors.white70),
-            )
-          else
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final columns = constraints.maxWidth >= 1100
-                    ? 3
-                    : constraints.maxWidth >= 700
-                        ? 2
-                        : 1;
-                final cardWidth =
-                    (constraints.maxWidth - (columns - 1) * 12) / columns;
-
-                return Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: [
-                    SizedBox(
-                      width: cardWidth,
-                      child: _SparklineCard(
-                        title: '心率',
-                        color: Colors.redAccent,
-                        values: _history
-                            .where((e) =>
-                                e.validHeartRate == 1 && e.heartRate != null)
-                            .map((e) => e.heartRate!.toDouble())
-                            .toList(),
-                        suffix: 'bpm',
-                      ),
-                    ),
-                    SizedBox(
-                      width: cardWidth,
-                      child: _SparklineCard(
-                        title: '血氧',
-                        color: Colors.lightBlueAccent,
-                        values: _history
-                            .where((e) => e.validSpo2 == 1 && e.spo2 != null)
-                            .map((e) => e.spo2!)
-                            .toList(),
-                        suffix: '%',
-                      ),
-                    ),
-                    SizedBox(
-                      width: cardWidth,
-                      child: _SparklineCard(
-                        title: '体温',
-                        color: Colors.orangeAccent,
-                        values: _history
-                            .where((e) => e.validTemp == 1 && e.temp != null)
-                            .map((e) => e.temp!)
-                            .toList(),
-                        suffix: '℃',
-                      ),
-                    ),
-                  ],
-                );
-              },
+          const SizedBox(height: 12),
+          Container(
+            height: 224, // Reduced by 20% from 280
+            padding: const EdgeInsets.fromLTRB(8, 12, 8, 4),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.03),
+              borderRadius: BorderRadius.circular(20),
             ),
+            child: points.isEmpty
+                ? Center(
+                    child: Text(
+                      '暂无历史数据',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.7),
+                      ),
+                    ),
+                  )
+                : LineChart(
+                    _buildTrendChartData(
+                      points,
+                      metricColor,
+                      metric,
+                      _historyWindowSeconds,
+                    ),
+                  ),
+          ),
+          const SizedBox(height: 12),
+          _buildTrendMetricSelector(),
         ],
+      ),
+    );
+  }
+
+  List<_TrendPoint> _trendPoints(_TrendMetric metric) {
+    final sortedHistory = _history.toList()
+      ..sort((left, right) => left.timestamp.compareTo(right.timestamp));
+
+    return sortedHistory
+        .map((point) {
+          final value = _trendMetricValue(point, metric);
+          if (value == null) return null;
+          // Convert timestamp from milliseconds to seconds
+          final timestampInSeconds = point.timestamp ~/ 1000;
+          return _TrendPoint(timestamp: timestampInSeconds, value: value);
+        })
+        .whereType<_TrendPoint>()
+        .toList();
+  }
+
+  double? _trendMetricValue(DeviceHistoryPoint point, _TrendMetric metric) {
+    switch (metric) {
+      case _TrendMetric.heartRate:
+        if (point.validHeartRate != 1 || point.heartRate == null) return null;
+        return point.heartRate!.toDouble();
+      case _TrendMetric.spo2:
+        if (point.validSpo2 != 1 || point.spo2 == null) return null;
+        return point.spo2;
+      case _TrendMetric.temp:
+        if (point.validTemp != 1 || point.temp == null) return null;
+        return point.temp;
+    }
+  }
+
+  double? _averageValue(List<_TrendPoint> points) {
+    if (points.isEmpty) return null;
+    final sum = points.fold<double>(0, (acc, point) => acc + point.value);
+    return sum / points.length;
+  }
+
+  String _trendMetricLabel(_TrendMetric metric) {
+    switch (metric) {
+      case _TrendMetric.heartRate:
+        return '心率';
+      case _TrendMetric.spo2:
+        return '血氧';
+      case _TrendMetric.temp:
+        return '温度';
+    }
+  }
+
+  String _trendMetricUnit(_TrendMetric metric) {
+    switch (metric) {
+      case _TrendMetric.heartRate:
+        return '次/分钟';
+      case _TrendMetric.spo2:
+        return '%';
+      case _TrendMetric.temp:
+        return '℃';
+    }
+  }
+
+  Color _trendMetricColor(_TrendMetric metric) {
+    switch (metric) {
+      case _TrendMetric.heartRate:
+        return const Color(0xfff65a6b);
+      case _TrendMetric.spo2:
+        return const Color(0xff4ea1ff);
+      case _TrendMetric.temp:
+        return const Color(0xffff9f43);
+    }
+  }
+
+  String _formatTrendValue(double value, _TrendMetric metric) {
+    switch (metric) {
+      case _TrendMetric.heartRate:
+        return value.toStringAsFixed(0);
+      case _TrendMetric.spo2:
+      case _TrendMetric.temp:
+        return value.toStringAsFixed(1);
+    }
+  }
+
+  LineChartData _buildTrendChartData(
+    List<_TrendPoint> points,
+    Color color,
+    _TrendMetric metric,
+    int selectedWindowSeconds,
+  ) {
+    final now = DateTime.now();
+    final currentTimestamp = now.millisecondsSinceEpoch ~/ 1000;
+
+    // Calculate the rightmost timestamp as current time
+    final rightTimestamp = currentTimestamp;
+
+    // Calculate the leftmost timestamp based on the selected window
+    final leftTimestamp = rightTimestamp - selectedWindowSeconds;
+
+    // Filter points within the time range
+    final filteredPoints = points
+        .where((point) =>
+            point.timestamp >= leftTimestamp &&
+            point.timestamp <= rightTimestamp)
+        .toList();
+
+    if (filteredPoints.isEmpty) {
+      return LineChartData(
+        lineBarsData: [],
+        titlesData: FlTitlesData(show: false),
+        borderData: FlBorderData(show: false),
+      );
+    }
+
+    final values = filteredPoints.map((point) => point.value).toList();
+    final minValue = values.reduce(math.min);
+    final maxValue = values.reduce(math.max);
+    final span = (maxValue - minValue).abs();
+    final pad = span < 1 ? 1.0 : span * 0.25;
+    final minY = minValue - pad;
+    final maxY = maxValue + pad;
+    final xStep = _trendXAxisIntervalSeconds(selectedWindowSeconds).toDouble();
+    final yStep = _axisStep(minY, maxY, metric);
+
+    return LineChartData(
+      minX: leftTimestamp.toDouble(),
+      maxX: rightTimestamp.toDouble(),
+      minY: minY,
+      maxY: maxY,
+      gridData: FlGridData(
+        show: true,
+        drawVerticalLine: false,
+        horizontalInterval: yStep,
+        getDrawingHorizontalLine: (_) => FlLine(
+          color: Colors.white.withOpacity(0.08),
+          strokeWidth: 1,
+        ),
+      ),
+      borderData: FlBorderData(show: false),
+      lineTouchData: LineTouchData(
+        enabled: true,
+        touchTooltipData: LineTouchTooltipData(
+          getTooltipItems: (spots) => spots
+              .map(
+                (spot) => LineTooltipItem(
+                  '${_formatTrendValue(spot.y, metric)} ${_trendMetricUnit(metric)}',
+                  const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              )
+              .toList(),
+        ),
+      ),
+      titlesData: FlTitlesData(
+        leftTitles: const AxisTitles(
+          sideTitles: SideTitles(showTitles: false),
+        ),
+        topTitles: const AxisTitles(
+          sideTitles: SideTitles(showTitles: false),
+        ),
+        rightTitles: AxisTitles(
+          sideTitles: SideTitles(
+            showTitles: true,
+            reservedSize: 46,
+            interval: yStep,
+            getTitlesWidget: (value, meta) {
+              if (value < minY || value > maxY) {
+                return const SizedBox.shrink();
+              }
+              return Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: Text(
+                  _formatTrendAxisValue(value, metric),
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.7),
+                    fontSize: 10,
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        bottomTitles: AxisTitles(
+          sideTitles: SideTitles(
+            showTitles: true,
+            reservedSize: 26,
+            interval: xStep,
+            getTitlesWidget: (value, meta) {
+              if (value < leftTimestamp || value > rightTimestamp) {
+                return const SizedBox.shrink();
+              }
+              return Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  _formatTrendTime(value.toInt()),
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.7),
+                    fontSize: 10,
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+      lineBarsData: [
+        LineChartBarData(
+          spots: [
+            for (final point in filteredPoints)
+              FlSpot(point.timestamp.toDouble(), point.value),
+          ],
+          isCurved: true,
+          barWidth: 1.5,
+          color: color,
+          dotData: FlDotData(
+            show: true,
+            getDotPainter: (_, __, ___, ____) => FlDotCirclePainter(
+              radius: 1.5,
+              color: color,
+              strokeWidth: 0,
+            ),
+          ),
+          belowBarData: BarAreaData(
+            show: true,
+            color: color.withOpacity(0.18),
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                color.withOpacity(0.32),
+                color.withOpacity(0.02),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  double _axisStep(double minY, double maxY, _TrendMetric metric) {
+    final span = (maxY - minY).abs();
+    if (span <= 0) return 1;
+
+    switch (metric) {
+      case _TrendMetric.heartRate:
+        // Heart rate: use larger steps for better readability
+        if (span >= 40) return 10;
+        if (span >= 20) return 5;
+        return 5;
+      case _TrendMetric.spo2:
+        // SpO2: typically small range, use 1 unit steps
+        return 1;
+      case _TrendMetric.temp:
+        // Temperature: use 0.5 or 1 unit steps
+        if (span >= 2) return 1;
+        return 0.5;
+    }
+  }
+
+  int _trendXAxisIntervalSeconds(int selectedWindowSeconds) {
+    if (selectedWindowSeconds <= 5 * 60) return 60;
+    if (selectedWindowSeconds <= 30 * 60) return 5 * 60;
+    if (selectedWindowSeconds <= 2 * 3600) return 15 * 60;
+    if (selectedWindowSeconds <= 6 * 3600) return 30 * 60;
+    if (selectedWindowSeconds <= 12 * 3600) return 60 * 60;
+    return 2 * 3600;
+  }
+
+  String _formatTrendAxisValue(double value, _TrendMetric metric) {
+    switch (metric) {
+      case _TrendMetric.heartRate:
+        return value.toStringAsFixed(0);
+      case _TrendMetric.spo2:
+      case _TrendMetric.temp:
+        return value.toStringAsFixed(1);
+    }
+  }
+
+  String _formatTrendTime(int timestamp) {
+    // timestamp is in seconds, convert to milliseconds for DateTime
+    final date = DateTime.fromMillisecondsSinceEpoch(timestamp * 1000);
+    String pad(int value) => value.toString().padLeft(2, '0');
+    return '${pad(date.hour)}:${pad(date.minute)}';
+  }
+
+  Widget _buildTrendMetricSelector() {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        children: _TrendMetric.values.map((metric) {
+          final selected = metric == _selectedTrendMetric;
+          final color = _trendMetricColor(metric);
+          return Expanded(
+            child: GestureDetector(
+              onTap: () {
+                setState(() {
+                  _selectedTrendMetric = metric;
+                });
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: selected ? color : Colors.transparent,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  _trendMetricLabel(metric),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: selected ? Colors.white : Colors.black87,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          );
+        }).toList(),
       ),
     );
   }
@@ -449,13 +817,6 @@ class _DeviceMonitorPageState extends State<DeviceMonitorPage> {
                               fontWeight: FontWeight.w700,
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          Text(
-                            '#${point.seq ?? '--'}',
-                            style: const TextStyle(color: Colors.white54),
-                          ),
-                          const Spacer(),
-                          _statusBadge(point.reason ?? 'ok'),
                         ],
                       ),
                       const SizedBox(height: 10),
@@ -542,17 +903,85 @@ class _DeviceMonitorPageState extends State<DeviceMonitorPage> {
     );
   }
 
-  Widget _historyWindowChip(int seconds) {
+  String _windowLabel(int seconds) {
+    if (seconds < 3600) {
+      final minutes = (seconds / 60).round();
+      return '$minutes 分钟';
+    }
+    final hours = (seconds / 3600).round();
+    return '$hours 小时';
+  }
+
+  String get _historyWindowLabel => _windowLabel(_historyWindowSeconds);
+
+  void _showHistoryWindowPicker() {
+    Get.dialog(
+      Center(
+        child: SizedBox(
+          width: MediaQuery.of(context).size.width * 0.7,
+          height: MediaQuery.of(context).size.height * 0.7,
+          child: Dialog(
+            backgroundColor: const Color(0xff1e2a47),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Expanded(
+                    child: ListView(
+                      children: [
+                        60,
+                        120,
+                        300,
+                        600,
+                        900,
+                        1800,
+                        3600,
+                        7200,
+                        14400,
+                        21600,
+                        43200,
+                        86400,
+                      ].map((seconds) => _historyWindowTile(seconds)).toList(),
+                    ),
+                  ),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: () => Get.back(),
+                      child: const Text(
+                        '取消',
+                        style: TextStyle(color: Colors.white70),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _historyWindowTile(int seconds) {
     final label = _windowLabel(seconds);
     final selected = _historyWindowSeconds == seconds;
-    return ActionChip(
-      label: Text(label),
-      backgroundColor:
-          selected ? const Color(0xff2d7ff9) : Colors.white.withOpacity(0.06),
-      labelStyle: TextStyle(
-        color: selected ? Colors.white : Colors.white,
+    return ListTile(
+      title: Text(
+        label,
+        style: TextStyle(
+          color: selected ? const Color(0xff2d7ff9) : Colors.white,
+          fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+        ),
       ),
-      onPressed: () {
+      trailing: selected
+          ? const Icon(Icons.check_circle, color: Color(0xff2d7ff9))
+          : null,
+      onTap: () {
         Get.back();
         setState(() {
           _historyWindowSeconds = seconds;
@@ -562,60 +991,11 @@ class _DeviceMonitorPageState extends State<DeviceMonitorPage> {
     );
   }
 
-  String _windowLabel(int seconds) {
-    if (seconds < 60) {
-      return '$seconds 秒';
-    }
-    final minutes = (seconds / 60).round();
-    return '$minutes 分钟';
-  }
-
-  String get _historyWindowLabel => _windowLabel(_historyWindowSeconds);
-
-  void _showHistoryWindowPicker() {
-    Get.bottomSheet(
-      Container(
-        decoration: const BoxDecoration(
-          color: Color(0xff111a2e),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              '选择历史窗口',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _historyWindowChip(30),
-                _historyWindowChip(60),
-                _historyWindowChip(120),
-                _historyWindowChip(300),
-                _historyWindowChip(600),
-                _historyWindowChip(1800),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   String _formatTimestamp(int? timestamp) {
-    if (timestamp == null || timestamp <= 0) return '--';
+    if (timestamp == null) return '--';
     final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
     String pad(int value) => value.toString().padLeft(2, '0');
-    return '${date.year}-${pad(date.month)}-${pad(date.day)} ${pad(date.hour)}:${pad(date.minute)}:${pad(date.second)}';
+    return '${pad(date.hour)}:${pad(date.minute)}:${pad(date.second)}';
   }
 }
 
@@ -635,135 +1015,5 @@ class _LoadingCard extends StatelessWidget {
         child: CircularProgressIndicator(color: Color(0xff2d7ff9)),
       ),
     );
-  }
-}
-
-class _SparklineCard extends StatelessWidget {
-  final String title;
-  final Color color;
-  final List<double> values;
-  final String suffix;
-
-  const _SparklineCard({
-    required this.title,
-    required this.color,
-    required this.values,
-    required this.suffix,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final latest = values.isEmpty ? '--' : _formatValue(values.last);
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const Spacer(),
-              Text(
-                latest == '--' ? '--' : '$latest $suffix',
-                style: TextStyle(color: color, fontWeight: FontWeight.w800),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          SizedBox(
-            height: 90,
-            child: values.length < 2
-                ? Center(
-                    child: Text(
-                      '暂无有效数据',
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.7),
-                        fontSize: 12,
-                      ),
-                    ),
-                  )
-                : CustomPaint(
-                    painter: _SparklinePainter(color: color, values: values),
-                    child: Container(),
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _formatValue(double value) {
-    if (value % 1 == 0) return value.toInt().toString();
-    return value.toStringAsFixed(1);
-  }
-}
-
-class _SparklinePainter extends CustomPainter {
-  final Color color;
-  final List<double> values;
-
-  _SparklinePainter({required this.color, required this.values});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final gridPaint = Paint()
-      ..color = Colors.white.withOpacity(0.06)
-      ..strokeWidth = 1;
-
-    for (int i = 1; i < 4; i++) {
-      final y = size.height * i / 4;
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
-    }
-
-    if (values.length < 2) return;
-
-    final minValue = values.reduce(math.min);
-    final maxValue = values.reduce(math.max);
-    final span =
-        (maxValue - minValue).abs() < 0.0001 ? 1.0 : maxValue - minValue;
-
-    final linePaint = Paint()
-      ..color = color
-      ..strokeWidth = 2.5
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-
-    final path = Path();
-    for (int i = 0; i < values.length; i++) {
-      final x = size.width * (i / (values.length - 1));
-      final normalized = (values[i] - minValue) / span;
-      final y = size.height - normalized * (size.height - 12) - 6;
-      if (i == 0) {
-        path.moveTo(x, y);
-      } else {
-        path.lineTo(x, y);
-      }
-    }
-
-    canvas.drawPath(path, linePaint);
-
-    final dotPaint = Paint()..color = color;
-    for (int i = 0; i < values.length; i++) {
-      final x = size.width * (i / (values.length - 1));
-      final normalized = (values[i] - minValue) / span;
-      final y = size.height - normalized * (size.height - 12) - 6;
-      canvas.drawCircle(Offset(x, y), 2.8, dotPaint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _SparklinePainter oldDelegate) {
-    return oldDelegate.values != values || oldDelegate.color != color;
   }
 }

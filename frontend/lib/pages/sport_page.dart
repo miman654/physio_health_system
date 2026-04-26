@@ -1,10 +1,12 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 
+import '../api/api_service.dart';
 import '../component/bottom_tab_bar.dart';
 import '../controller/auth_controller.dart';
 import '../controller/data_controller.dart';
@@ -20,6 +22,7 @@ class SportPage extends StatefulWidget {
 class _SportPageState extends State<SportPage> {
   final AuthController _authController = Get.find<AuthController>();
   final DataController _dataController = Get.find<DataController>();
+  final ApiService _apiService = ApiService();
 
   final List<String> _sportTypes = <String>[
     '步行',
@@ -48,11 +51,27 @@ class _SportPageState extends State<SportPage> {
   bool _isWorkoutRunning = false;
   DateTime? _workoutStart;
   _ChartAxisMode _chartAxisMode = _ChartAxisMode.weekday;
+  List<_WeekDayCalorie> _weekData = [];
 
   @override
   void initState() {
     super.initState();
     _fetchSportRecords();
+    _fetchWeekData();
+  }
+
+  Future<void> _fetchWeekData() async {
+    final userId = _authController.userId.value;
+    if (userId <= 0) return;
+    final result = await _apiService.querySportWeek(userId);
+    if (result['code'] == 200 && result['data'] is List) {
+      final data = (result['data'] as List)
+          .map((e) => _WeekDayCalorie.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+      setState(() {
+        _weekData = data;
+      });
+    }
   }
 
   Future<void> _fetchSportRecords() async {
@@ -64,6 +83,7 @@ class _SportPageState extends State<SportPage> {
     setState(() {
       _loading = false;
     });
+    await _fetchWeekData();
   }
 
   Future<void> _toggleWorkout() async {
@@ -365,11 +385,7 @@ class _SportPageState extends State<SportPage> {
   }
 
   Widget _buildChartCard(List<_CaloriePoint> points) {
-    final calorieValues = points.map((e) => e.calories).toList();
-    final maxValue =
-        calorieValues.isEmpty ? 1.0 : calorieValues.reduce(math.max);
-    final minValue =
-        calorieValues.isEmpty ? 0.0 : calorieValues.reduce(math.min);
+    final weekdayLabels = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 18),
@@ -408,213 +424,398 @@ class _SportPageState extends State<SportPage> {
           ),
           const SizedBox(height: 8),
           SizedBox(
-            height: 140,
-            child: CustomPaint(
-              painter: _CalorieCurvePainter(
-                points: points,
-                axisMode: _chartAxisMode,
-                minValue: minValue,
-                maxValue: maxValue,
-              ),
-              child: Container(),
-            ),
+            height: 210, // Reduced from 300 to 210 (30% reduction)
+            child: _chartAxisMode == _ChartAxisMode.weekday
+                ? _buildWeekBarChart()
+                : _buildTimeLineChart(points),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildActivitySection() {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(18, 18, 18, 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Expanded(
-                child: Text(
-                  '今日活动',
-                  style: TextStyle(
-                    color: AppColors.textTitle,
-                    fontSize: 38,
-                    fontWeight: FontWeight.w800,
+  Widget _buildWeekBarChart() {
+    if (_weekData.isEmpty) {
+      return const Center(
+        child: Text(
+          '暂无周数据',
+          style: TextStyle(color: AppColors.textBody),
+        ),
+      );
+    }
+
+    final maxCalorie = _weekData.map((e) => e.calorie).reduce(math.max);
+    final maxY = maxCalorie > 0 ? maxCalorie * 1.2 : 100.0;
+
+    return BarChart(
+      BarChartData(
+        alignment: BarChartAlignment.spaceAround,
+        maxY: maxY,
+        minY: 0,
+        barTouchData: BarTouchData(
+          enabled: true,
+          touchTooltipData: BarTouchTooltipData(
+            getTooltipItem: (group, groupIndex, rod, rodIndex) {
+              return BarTooltipItem(
+                '${rod.toY.toStringAsFixed(1)}千卡',
+                const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              );
+            },
+          ),
+        ),
+        titlesData: FlTitlesData(
+          show: true,
+          topTitles:
+              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles:
+              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 60, // Increased from 40 to 60 for larger font
+              interval: maxY / 4,
+              getTitlesWidget: (value, meta) {
+                return Text(
+                  value.toInt().toString(),
+                  style: const TextStyle(
+                    color: AppColors.textBody,
+                    fontSize: 24, // Doubled from 12 to 24
                   ),
-                ),
-              ),
-              Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  color: AppColors.primaryLight,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: TextButton(
-                  onPressed: () => Get.toNamed('/sport-calendar'),
-                  style: TextButton.styleFrom(
-                    padding: EdgeInsets.zero,
-                    foregroundColor: AppColors.primaryDark,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+                );
+              },
+            ),
+          ),
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 60, // Increased from 30 to 60 for larger font
+              getTitlesWidget: (value, meta) {
+                final index = value.toInt();
+                if (index < 0 || index >= _weekData.length) {
+                  return const SizedBox.shrink();
+                }
+                final weekdayLabels = [
+                  '周一',
+                  '周二',
+                  '周三',
+                  '周四',
+                  '周五',
+                  '周六',
+                  '周日'
+                ];
+                return Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    weekdayLabels[index],
+                    style: const TextStyle(
+                      color: AppColors.textBody,
+                      fontSize: 24, // Doubled from 12 to 24
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                  child: const Icon(Icons.calendar_month,
-                      color: AppColors.primaryDark),
-                ),
+                );
+              },
+            ),
+          ),
+        ),
+        gridData: FlGridData(
+          show: true,
+          drawVerticalLine: false,
+          horizontalInterval: maxY / 4,
+          getDrawingHorizontalLine: (value) {
+            return FlLine(
+              color: AppColors.primaryLight.withValues(alpha: 0.3),
+              strokeWidth: 1,
+            );
+          },
+        ),
+        borderData: FlBorderData(show: false),
+        barGroups: _weekData.asMap().entries.map((entry) {
+          return BarChartGroupData(
+            x: entry.key,
+            barRods: [
+              BarChartRodData(
+                toY: entry.value.calorie,
+                color: AppColors.primary,
+                width: 24, // Increased from 16 to 24
+                borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(8)), // Increased from 4 to 8
+                rodStackItems: [
+                  BarChartRodStackItem(
+                      0, entry.value.calorie, AppColors.primary),
+                ],
               ),
             ],
-          ),
-          const SizedBox(height: 10),
-          Row(
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildTimeLineChart(List<_CaloriePoint> points) {
+    final calorieValues = points.map((e) => e.calories).toList();
+    final maxValue =
+        calorieValues.isEmpty ? 1.0 : calorieValues.reduce(math.max);
+    final minValue =
+        calorieValues.isEmpty ? 0.0 : calorieValues.reduce(math.min);
+
+    return CustomPaint(
+      painter: _CalorieCurvePainter(
+        points: points,
+        axisMode: _chartAxisMode,
+        minValue: minValue,
+        maxValue: maxValue,
+      ),
+      child: Container(),
+    );
+  }
+
+  Widget _buildActivitySection() {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isNarrowScreen = screenWidth <= 412;
+
+    return Align(
+      alignment: Alignment.center,
+      child: SizedBox(
+        width: isNarrowScreen ? 320 : null,
+        child: Container(
+          margin: isNarrowScreen
+              ? const EdgeInsets.fromLTRB(0, 18, 0, 0)
+              : const EdgeInsets.fromLTRB(18, 18, 18, 0),
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: SizedBox(
-                  height: 220,
-                  child: ListView.builder(
-                    itemCount: _sportTypes.length,
-                    itemBuilder: (_, index) {
-                      final type = _sportTypes[index];
-                      final selected = _sportType == type;
-                      final advice = _sportAdvice[type] ?? '保持稳定节奏，注意补水。';
-                      return InkWell(
-                        borderRadius: BorderRadius.circular(12),
-                        onTap: () {
-                          setState(() {
-                            _sportType = type;
-                          });
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                              vertical: 8, horizontal: 6),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              SizedBox(
-                                width: 26,
-                                child: Column(
-                                  children: [
-                                    Container(
-                                      width: selected ? 12 : 9,
-                                      height: selected ? 12 : 9,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: selected
-                                            ? AppColors.primary
-                                            : AppColors.textTip,
-                                      ),
-                                    ),
-                                    if (index != _sportTypes.length - 1)
-                                      SizedBox(
-                                        height: 28,
-                                        child: Column(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.spaceBetween,
-                                          children: List.generate(
-                                            6,
-                                            (_) => Container(
-                                              width: 1,
-                                              height: 3,
-                                              color: AppColors.primaryLight,
-                                            ),
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      '今日活动',
+                      style: TextStyle(
+                        color: AppColors.textTitle,
+                        fontSize: 38,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryLight,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: TextButton(
+                      onPressed: () => Get.toNamed('/sport-calendar'),
+                      style: TextButton.styleFrom(
+                        padding: EdgeInsets.zero,
+                        foregroundColor: AppColors.primaryDark,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      child: const Icon(Icons.calendar_month,
+                          color: AppColors.primaryDark),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 220,
+                      child: ListView.builder(
+                        itemCount: _sportTypes.length,
+                        itemBuilder: (_, index) {
+                          final type = _sportTypes[index];
+                          final selected = _sportType == type;
+                          final advice = _sportAdvice[type] ?? '保持稳定节奏，注意补水。';
+                          return InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () {
+                              setState(() {
+                                _sportType = type;
+                              });
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  vertical: 8, horizontal: 6),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  SizedBox(
+                                    width: 26,
+                                    child: Column(
+                                      children: [
+                                        Container(
+                                          width: selected ? 12 : 9,
+                                          height: selected ? 12 : 9,
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            color: selected
+                                                ? AppColors.primary
+                                                : AppColors.textTip,
                                           ),
                                         ),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      type,
-                                      style: TextStyle(
-                                        color: AppColors.textTitle,
-                                        fontWeight: FontWeight.w800,
-                                        fontSize: 30,
-                                      ),
+                                        if (index != _sportTypes.length - 1)
+                                          SizedBox(
+                                            height: 28,
+                                            child: Column(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment
+                                                      .spaceBetween,
+                                              children: List.generate(
+                                                6,
+                                                (_) => Container(
+                                                  width: 1,
+                                                  height: 3,
+                                                  color: AppColors.primaryLight,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                      ],
                                     ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      advice,
-                                      style: TextStyle(
-                                        color: AppColors.textBody,
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              SizedBox(
-                height: 220,
-                child: Column(
-                  children: [
-                    const SizedBox(height: 26),
-                    SizedBox(
-                      width: 150,
-                      height: 50,
-                      child: ElevatedButton(
-                        onPressed: _loading ? null : _toggleWorkout,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor:
-                              _isWorkoutRunning ? Colors.red : Colors.green,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 18),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(25),
-                          ),
-                          elevation: 0,
-                        ),
-                        child: _loading
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    _isWorkoutRunning ? '结束' : '开始',
-                                    style: const TextStyle(
-                                      fontSize: 36,
-                                      fontWeight: FontWeight.w800,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          type,
+                                          style: TextStyle(
+                                            color: AppColors.textTitle,
+                                            fontWeight: FontWeight.w800,
+                                            fontSize: 30,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          advice,
+                                          style: TextStyle(
+                                            color: AppColors.textBody,
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ],
                               ),
+                            ),
+                          );
+                        },
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(width: 12),
+                  SizedBox(
+                    height: 220,
+                    child: Column(
+                      children: [
+                        const SizedBox(height: 26),
+                        isNarrowScreen
+                            ? SizedBox(
+                                width: 80,
+                                height: 50,
+                                child: ElevatedButton(
+                                  onPressed: _loading ? null : _toggleWorkout,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: _isWorkoutRunning
+                                        ? Colors.red
+                                        : Colors.green,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 18),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(25),
+                                    ),
+                                    elevation: 0,
+                                  ),
+                                  child: _loading
+                                      ? const SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(
+                                              strokeWidth: 2),
+                                        )
+                                      : FittedBox(
+                                          fit: BoxFit.scaleDown,
+                                          child: Text(
+                                            _isWorkoutRunning ? '结束' : '开始',
+                                            style: const TextStyle(
+                                              fontSize: 36,
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                          ),
+                                        ),
+                                ),
+                              )
+                            : SizedBox(
+                                width: 150,
+                                height: 50,
+                                child: ElevatedButton(
+                                  onPressed: _loading ? null : _toggleWorkout,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: _isWorkoutRunning
+                                        ? Colors.red
+                                        : Colors.green,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 18),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(25),
+                                    ),
+                                    elevation: 0,
+                                  ),
+                                  child: _loading
+                                      ? const SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(
+                                              strokeWidth: 2),
+                                        )
+                                      : Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Text(
+                                              _isWorkoutRunning ? '结束' : '开始',
+                                              style: const TextStyle(
+                                                fontSize: 36,
+                                                fontWeight: FontWeight.w800,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                ),
+                              ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
+              if (_isWorkoutRunning && _workoutStart != null) ...[
+                const SizedBox(height: 10),
+                Text(
+                  '已开始: ${DateFormat('HH:mm:ss').format(_workoutStart!)}',
+                  style: const TextStyle(
+                    color: AppColors.textBody,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
             ],
           ),
-          if (_isWorkoutRunning && _workoutStart != null) ...[
-            const SizedBox(height: 10),
-            Text(
-              '已开始: ${DateFormat('HH:mm:ss').format(_workoutStart!)}',
-              style: const TextStyle(
-                color: AppColors.textBody,
-                fontSize: 13,
-              ),
-            ),
-          ],
-        ],
+        ),
       ),
     );
   }
@@ -828,6 +1029,23 @@ class _CaloriePoint {
   final DateTime time;
   final double calories;
   final bool isToday;
+}
+
+class _WeekDayCalorie {
+  _WeekDayCalorie({
+    required this.weekday,
+    required this.calorie,
+  });
+
+  final String weekday;
+  final double calorie;
+
+  factory _WeekDayCalorie.fromJson(Map<String, dynamic> json) {
+    return _WeekDayCalorie(
+      weekday: json['weekday']?.toString() ?? '',
+      calorie: (json['calorie'] as num?)?.toDouble() ?? 0.0,
+    );
+  }
 }
 
 class _SportRecordEntry {

@@ -1,5 +1,4 @@
 // AI page
-
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../api/api_service.dart';
@@ -143,10 +142,6 @@ class _AIPageState extends State<AIPage> {
     final genderColor = _resolveGenderColor();
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('AI 健康分析'),
-        centerTitle: true,
-      ),
       body: RefreshIndicator(
         onRefresh: _fetchAIAnalysis,
         child: SingleChildScrollView(
@@ -155,188 +150,186 @@ class _AIPageState extends State<AIPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                decoration: BoxDecoration(
-                  color: AppColors.card,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: AppColors.primaryLight),
-                ),
-                child: Card(
-                  elevation: 0,
-                  color: Colors.transparent,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
+              const SizedBox(height: 40),
+              // ========== 头像 + 用户名 + 性别 + 两个按钮 同一行 ==========
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // 头像
+                  Container(
+                    width: 60,
+                    height: 60,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      image: const DecorationImage(
+                        image: AssetImage('assets/images/image.png'),
+                        fit: BoxFit.cover,
+                      ),
+                    ),
                   ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                  const SizedBox(width: 12),
+
+                  // 用户名 + 性别
+                  Expanded(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                color: genderColor.withOpacity(0.14),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Icon(
-                                Icons.person,
-                                color: genderColor,
-                                size: 24,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    _authController.username.value.isEmpty
-                                        ? '未设置用户名'
-                                        : _authController.username.value,
-                                    style: const TextStyle(
-                                      fontSize: 24,
-                                      fontWeight: FontWeight.bold,
-                                      color: AppColors.textTitle,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 4,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: genderColor.withOpacity(0.1),
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Text(
-                                      _authController.userGender.value.isEmpty
-                                          ? '未知'
-                                          : _authController.userGender.value,
-                                      style: TextStyle(
-                                        color: genderColor,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
+                        Text(
+                          _authController.username.value.isEmpty
+                              ? '未设置用户名'
+                              : _authController.username.value,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textTitle,
+                          ),
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(width: 10),
                         Container(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 12,
+                            horizontal: 8,
+                            vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                genderColor.withOpacity(0.05),
-                                genderColor.withOpacity(0.02),
-                              ],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: genderColor.withOpacity(0.2),
-                            ),
+                            color: genderColor.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
                           ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceAround,
-                            children: [
-                              _buildInfoItem(
-                                Icons.calendar_today,
-                                '年龄',
-                                _authController.userAge.value > 0
-                                    ? '${_authController.userAge.value}岁'
-                                    : '--',
-                                genderColor,
-                              ),
-                              _buildInfoItem(
-                                Icons.line_weight,
-                                '体重',
-                                _authController.userWeight.value > 0
-                                    ? '${_authController.userWeight.value.toStringAsFixed(1)}kg'
-                                    : '--',
-                                genderColor,
-                              ),
-                              _buildInfoItem(
-                                Icons.height,
-                                '身高',
-                                _authController.userHeight.value > 0
-                                    ? '${_authController.userHeight.value.toStringAsFixed(1)}cm'
-                                    : '--',
-                                genderColor,
-                              ),
-                            ],
+                          child: Text(
+                            _authController.userGender.value.isEmpty
+                                ? '未知'
+                                : _authController.userGender.value,
+                            style: TextStyle(
+                              color: genderColor,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
                         ),
-                        const SizedBox(height: 12),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            OutlinedButton(
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: AppColors.textBody,
-                                side: const BorderSide(
-                                    color: AppColors.primaryLight),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                              ),
-                              onPressed:
-                                  loggingOut ? null : _handleDeleteAccount,
-                              child: loggingOut
-                                  ? const SizedBox(
-                                      width: 14,
-                                      height: 14,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: AppColors.primary,
-                                      ),
-                                    )
-                                  : const Text('注销账号'),
-                            ),
-                            const SizedBox(width: 10),
-                            ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.primary,
-                                foregroundColor: Colors.white,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                              ),
-                              onPressed: loggingOut ? null : _handleLogout,
-                              child: loggingOut
-                                  ? const SizedBox(
-                                      width: 14,
-                                      height: 14,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Colors.white,
-                                      ),
-                                    )
-                                  : const Text('退出登录'),
-                            ),
-                          ],
-                        ),
-                        if (loadingUserInfo) ...[
-                          const SizedBox(height: 12),
-                          const Center(
-                            child: CircularProgressIndicator(
-                              color: AppColors.primary,
-                            ),
-                          ),
-                        ],
                       ],
                     ),
                   ),
+
+                  // 退出登录
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 0),
+                      minimumSize: const Size(60, 36),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    onPressed: loggingOut ? null : _handleLogout,
+                    child: loggingOut
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text('退出登录', style: TextStyle(fontSize: 13)),
+                  ),
+                  const SizedBox(width: 8),
+
+                  // 注销账号（最右侧）
+                  OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.textBody,
+                      side: const BorderSide(color: AppColors.primaryLight),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 0),
+                      minimumSize: const Size(60, 36),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    onPressed: loggingOut ? null : _handleDeleteAccount,
+                    child: loggingOut
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppColors.primary,
+                            ),
+                          )
+                        : const Text('注销账号', style: TextStyle(fontSize: 13)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+
+              // 下面所有代码完全不动
+              Padding(
+                padding: const EdgeInsets.all(0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            genderColor.withOpacity(0.05),
+                            genderColor.withOpacity(0.02),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: genderColor.withOpacity(0.2),
+                        ),
+                      ),
+                      child: Row(
+                        // mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        mainAxisAlignment:
+                            MainAxisAlignment.spaceAround, // 水平居中
+                        crossAxisAlignment: CrossAxisAlignment.center, // 垂直居中
+                        children: [
+                          _buildInfoItem(
+                            Icons.calendar_today,
+                            '',
+                            _authController.userAge.value > 0
+                                ? '${_authController.userAge.value}岁'
+                                : '--',
+                            genderColor,
+                          ),
+                          _buildInfoItem(
+                            Icons.line_weight,
+                            '',
+                            _authController.userWeight.value > 0
+                                ? '${_authController.userWeight.value.toStringAsFixed(1)}kg'
+                                : '--',
+                            genderColor,
+                          ),
+                          _buildInfoItem(
+                            Icons.height,
+                            '',
+                            _authController.userHeight.value > 0
+                                ? '${_authController.userHeight.value.toStringAsFixed(1)}cm'
+                                : '--',
+                            genderColor,
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (loadingUserInfo) ...[
+                      const SizedBox(height: 12),
+                      const Center(
+                        child: CircularProgressIndicator(
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
               const SizedBox(height: 20),

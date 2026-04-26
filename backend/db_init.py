@@ -85,7 +85,7 @@ def init_db():
         """
     CREATE TABLE IF NOT EXISTS iot_device_latest (
         device_id TEXT PRIMARY KEY,
-        last_raw_event_id INTEGER NOT NULL,
+        last_raw_event_id INTEGER,
         last_seq INTEGER,
         last_ts_device_ms INTEGER,
         last_server_received_at INTEGER NOT NULL,

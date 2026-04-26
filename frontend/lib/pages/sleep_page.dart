@@ -3,9 +3,11 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:get/get.dart';
+import 'package:fl_chart/fl_chart.dart';
 
 import '../api/api_service.dart';
 import '../controller/auth_controller.dart';
+import '../controller/sleep_controller.dart';
 import '../component/bottom_tab_bar.dart';
 
 class SleepPage extends StatefulWidget {
@@ -15,21 +17,26 @@ class SleepPage extends StatefulWidget {
   State<SleepPage> createState() => _SleepPageState();
 }
 
-class _SleepPageState extends State<SleepPage>
-    with SingleTickerProviderStateMixin {
+class _SleepPageState extends State<SleepPage> with TickerProviderStateMixin {
   final ApiService _apiService = ApiService();
   final AuthController _authController = Get.find<AuthController>();
+  final SleepController _sleepController = Get.find<SleepController>();
 
   late final AnimationController _pulseController;
   late final Animation<double> _pulseAnimation;
 
-  bool _isSleeping = false;
   bool _submitting = false;
-  DateTime? _sleepStartAt;
 
   // 睡眠记录
   List<Map<String, dynamic>> sleepRecords = [];
   bool loading = false;
+
+  // 睡眠记录弹窗
+  bool _showSleepPopup = false;
+  Map<String, dynamic>? _latestSleepRecord;
+  late final AnimationController _popupController;
+  late final Animation<double> _popupScaleAnimation;
+  late final Animation<double> _popupOpacityAnimation;
 
   @override
   void initState() {
@@ -42,12 +49,28 @@ class _SleepPageState extends State<SleepPage>
       parent: _pulseController,
       curve: Curves.easeInOut,
     );
+
+    // 初始化弹窗动画控制器
+    _popupController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    );
+    _popupScaleAnimation = CurvedAnimation(
+      parent: _popupController,
+      curve: Curves.elasticOut,
+    );
+    _popupOpacityAnimation = CurvedAnimation(
+      parent: _popupController,
+      curve: Curves.easeOut,
+    );
+
     fetchSleepRecords();
   }
 
   @override
   void dispose() {
     _pulseController.dispose();
+    _popupController.dispose();
     super.dispose();
   }
 
@@ -73,23 +96,18 @@ class _SleepPageState extends State<SleepPage>
   }
 
   void _startSleep() {
-    setState(() {
-      _isSleeping = true;
-      _sleepStartAt = DateTime.now();
-    });
+    _sleepController.startSleep();
   }
 
   Future<void> _endSleep() async {
-    final startedAt = _sleepStartAt;
+    final startedAt = _sleepController.getSleepStartAt();
     if (startedAt == null) {
-      setState(() {
-        _isSleeping = false;
-      });
+      _sleepController.endSleep();
       return;
     }
 
     final elapsed = DateTime.now().difference(startedAt);
-    if (elapsed.inSeconds < 180) {
+    if (elapsed.inSeconds < 5) {
       final shouldEnd = await Get.dialog<bool>(
         AlertDialog(
           backgroundColor: const Color(0xFF2C2344),
@@ -98,7 +116,7 @@ class _SleepPageState extends State<SleepPage>
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
           ),
           content: Text(
-            '睡眠不足3分钟，记录不会保存。\n是否仍要结束睡眠？',
+            '睡眠不足5秒，记录不会保存。\n是否仍要结束睡眠？',
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.85),
               height: 1.4,
@@ -128,10 +146,7 @@ class _SleepPageState extends State<SleepPage>
         return;
       }
 
-      setState(() {
-        _isSleeping = false;
-        _sleepStartAt = null;
-      });
+      _sleepController.endSleep();
       return;
     }
 
@@ -154,11 +169,32 @@ class _SleepPageState extends State<SleepPage>
 
     if (resp["code"] == 200) {
       Get.snackbar('上传成功', '睡眠记录已上传');
-      setState(() {
-        _isSleeping = false;
-        _sleepStartAt = null;
-      });
-      fetchSleepRecords();
+      _sleepController.endSleep();
+
+      // 上传成功后立即查询睡眠记录
+      await fetchSleepRecords();
+
+      // 显示睡眠记录弹窗
+      if (sleepRecords.isNotEmpty) {
+        setState(() {
+          _latestSleepRecord = sleepRecords.first;
+          _showSleepPopup = true;
+        });
+        _popupController.forward();
+
+        // 3秒后关闭弹窗并动画归入列表
+        Future.delayed(const Duration(seconds: 3), () {
+          if (!mounted) return;
+          _popupController.reverse();
+          Future.delayed(const Duration(milliseconds: 500), () {
+            if (!mounted) return;
+            setState(() {
+              _showSleepPopup = false;
+              _latestSleepRecord = null;
+            });
+          });
+        });
+      }
     } else {
       Get.snackbar('上传失败', resp["msg"] ?? "未知错误");
     }
@@ -173,13 +209,31 @@ class _SleepPageState extends State<SleepPage>
     return Column(
       children: [
         const SizedBox(height: 24),
-        Text(
-          _isSleeping ? '睡眠中' : '睡眠记录',
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 28,
-            fontWeight: FontWeight.w800,
-          ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Text(
+              _sleepController.isSleeping.value ? '睡眠中' : '睡眠记录',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 28,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            if (_sleepController.isSleeping.value) ...[
+              const SizedBox(width: 12),
+              Text(
+                '开始时间  ${_formatClock(_sleepController.getSleepStartAt())}',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.75),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ],
         ),
       ],
     );
@@ -188,10 +242,12 @@ class _SleepPageState extends State<SleepPage>
   Widget _buildSleepFlowCard() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 260),
-        child: _isSleeping ? _buildSleepingState() : _buildStartState(),
-      ),
+      child: Obx(() => AnimatedSwitcher(
+            duration: const Duration(milliseconds: 260),
+            child: _sleepController.isSleeping.value
+                ? _buildSleepingState()
+                : _buildStartState(),
+          )),
     );
   }
 
@@ -201,8 +257,8 @@ class _SleepPageState extends State<SleepPage>
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width: 120,
-          height: 120,
+          width: 216,
+          height: 216,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             gradient: LinearGradient(
@@ -213,7 +269,7 @@ class _SleepPageState extends State<SleepPage>
           ),
           child: const Icon(
             Icons.nightlight_round,
-            size: 64,
+            size: 115,
             color: Colors.white,
           ),
         ),
@@ -245,81 +301,76 @@ class _SleepPageState extends State<SleepPage>
       key: const ValueKey('sleeping'),
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          '开始时间  ${_formatClock(_sleepStartAt)}',
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.75),
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
         const SizedBox(height: 12),
-        Stack(
-          children: [
-            Center(
-              child: AnimatedBuilder(
-                animation: _pulseAnimation,
-                builder: (context, _) {
-                  final value = _pulseAnimation.value;
-                  return Container(
-                    width: 170 + (20 * value),
-                    height: 170 + (20 * value),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: const Color(0xFF6B5BBE).withValues(alpha: 0.18),
-                    ),
-                  );
-                },
-              ),
-            ),
-            Center(
-              child: AnimatedBuilder(
-                animation: _pulseAnimation,
-                builder: (context, _) {
-                  final value = _pulseAnimation.value;
-                  return Transform.translate(
-                    offset: Offset(0, -8 * value),
-                    child: Container(
-                      width: 126,
-                      height: 126,
+        SizedBox(
+          height: 380, // 给脉冲和轨道动画留出足够的空间
+          child: Stack(
+            children: [
+              Center(
+                child: AnimatedBuilder(
+                  animation: _pulseAnimation,
+                  builder: (context, _) {
+                    final value = _pulseAnimation.value;
+                    return Container(
+                      width: 306 + (36 * value),
+                      height: 306 + (36 * value),
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        gradient: LinearGradient(
-                          colors: [
-                            Colors.blue.shade300,
-                            Colors.purple.shade400,
-                          ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
+                        color: const Color(0xFF6B5BBE).withValues(alpha: 0.18),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              Center(
+                child: AnimatedBuilder(
+                  animation: _pulseAnimation,
+                  builder: (context, _) {
+                    final value = _pulseAnimation.value;
+                    return Transform.translate(
+                      offset: Offset(0, -14 * value),
+                      child: Container(
+                        width: 227,
+                        height: 227,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: LinearGradient(
+                            colors: [
+                              Colors.blue.shade300,
+                              Colors.purple.shade400,
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.nightlight_round,
+                          size: 130,
+                          color: Colors.white,
                         ),
                       ),
-                      child: const Icon(
-                        Icons.nightlight_round,
-                        size: 72,
-                        color: Colors.white,
+                    );
+                  },
+                ),
+              ),
+              Center(
+                child: AnimatedBuilder(
+                  animation: _pulseAnimation,
+                  builder: (context, _) {
+                    final value = _pulseAnimation.value;
+                    return Container(
+                      width: 396,
+                      height: 396,
+                      alignment: Alignment.center,
+                      child: CustomPaint(
+                        painter: _SleepingOrbitPainter(progress: value),
                       ),
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
-            ),
-            Center(
-              child: AnimatedBuilder(
-                animation: _pulseAnimation,
-                builder: (context, _) {
-                  final value = _pulseAnimation.value;
-                  return Container(
-                    width: 220,
-                    height: 220,
-                    alignment: Alignment.center,
-                    child: CustomPaint(
-                      painter: _SleepingOrbitPainter(progress: value),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
         const SizedBox(height: 12),
         Text(
@@ -547,12 +598,13 @@ class _SleepPageState extends State<SleepPage>
           // 生理指标
           Row(
             children: [
-              _buildPhysioChip(
+              _buildSleepPhysioChip(
                   '心率', '$avgHeartRate', Icons.favorite, Colors.red),
               const SizedBox(width: 8),
-              _buildPhysioChip('血氧', '$avgSpo2%', Icons.bloodtype, Colors.blue),
+              _buildSleepPhysioChip(
+                  '血氧', '$avgSpo2%', Icons.bloodtype, Colors.blue),
               const SizedBox(width: 8),
-              _buildPhysioChip(
+              _buildSleepPhysioChip(
                   '体温', '$avgTemp°C', Icons.thermostat, Colors.orange),
             ],
           ),
@@ -584,7 +636,7 @@ class _SleepPageState extends State<SleepPage>
     );
   }
 
-  Widget _buildPhysioChip(
+  Widget _buildSleepPhysioChip(
       String label, String value, IconData icon, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -606,20 +658,333 @@ class _SleepPageState extends State<SleepPage>
     );
   }
 
+  Widget _buildSleepPopup() {
+    if (_latestSleepRecord == null) return Container();
+
+    final record = _latestSleepRecord!;
+    final score = record['sleep_score'] ?? 0;
+    final deepSleep = record['deep_sleep_duration'] ?? 0;
+    final avgHeartRate = record['avg_heart_rate'] ?? '--';
+    final avgSpo2 = record['avg_spo2'] ?? '--';
+    final avgTemp = record['avg_temp'] ?? '--';
+    final suggestion = record['suggestion'] ?? '';
+
+    // Calculate sleep stages (mock data for now)
+    final totalSleepMinutes = deepSleep + (deepSleep * 2); // Mock: deep + light
+    final deepSleepPercent =
+        totalSleepMinutes > 0 ? (deepSleep / totalSleepMinutes) * 100 : 0;
+    final lightSleepPercent = 100 - deepSleepPercent;
+
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      child: Stack(
+        children: [
+          // Background blur
+          GestureDetector(
+            onTap: () {
+              _popupController.reverse();
+              Future.delayed(const Duration(milliseconds: 500), () {
+                if (!mounted) return;
+                setState(() {
+                  _showSleepPopup = false;
+                  _latestSleepRecord = null;
+                });
+              });
+            },
+            child: Container(
+              color: Colors.black.withOpacity(0.5),
+            ),
+          ),
+          // Popup content
+          Center(
+            child: AnimatedBuilder(
+              animation: _popupController,
+              builder: (context, child) {
+                return Transform.scale(
+                  scale: _popupScaleAnimation.value,
+                  child: Opacity(
+                    opacity: _popupOpacityAnimation.value,
+                    child: Container(
+                      width: 320,
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF2C2344),
+                        borderRadius: BorderRadius.circular(20),
+                        border:
+                            Border.all(color: Colors.white.withOpacity(0.2)),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Score and rating
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '$score 分',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 32,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  Text(
+                                    '超过 ${(score * 1.2).toInt()}% 的用户',
+                                    style: TextStyle(
+                                      color: Colors.white.withOpacity(0.7),
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              // Star rating
+                              Row(
+                                children: List.generate(5, (index) {
+                                  return Icon(
+                                    index < (score ~/ 20)
+                                        ? Icons.star
+                                        : Icons.star_border,
+                                    color: const Color(0xFFFFE23A),
+                                    size: 20,
+                                  );
+                                }),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 20),
+
+                          // Sleep quality text
+                          Text(
+                            '睡眠质量${score >= 80 ? '良好' : score >= 60 ? '一般' : '较差'}。然而，睡眠期间醒了 2 次，略高于正常范围，存在易醒问题。',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.8),
+                              fontSize: 14,
+                              height: 1.4,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 20),
+
+                          // Sleep stages
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            children: [
+                              // Left side: stage details
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Container(
+                                        width: 12,
+                                        height: 12,
+                                        decoration: const BoxDecoration(
+                                          color: Colors.purple,
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        '深睡 ${deepSleep}分钟',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    children: [
+                                      Container(
+                                        width: 12,
+                                        height: 12,
+                                        decoration: const BoxDecoration(
+                                          color: Colors.blue,
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        '浅睡 ${(deepSleep * 2)}分钟',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    children: [
+                                      Container(
+                                        width: 12,
+                                        height: 12,
+                                        decoration: const BoxDecoration(
+                                          color: Colors.green,
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        '快速眼动 ${(deepSleep * 0.5).toInt()}分钟',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+
+                              // Right side: circular chart
+                              SizedBox(
+                                width: 80,
+                                height: 80,
+                                child: PieChart(
+                                  PieChartData(
+                                    sections: [
+                                      PieChartSectionData(
+                                        value: deepSleepPercent.toDouble(),
+                                        color: Colors.purple,
+                                        radius: 30,
+                                        title: '',
+                                      ),
+                                      PieChartSectionData(
+                                        value: lightSleepPercent.toDouble(),
+                                        color: Colors.blue,
+                                        radius: 30,
+                                        title: '',
+                                      ),
+                                    ],
+                                    centerSpaceRadius: 20,
+                                    sectionsSpace: 0,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Sleep issues
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text(
+                                    '清醒次数 2 次',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  Text(
+                                    '偏高',
+                                    style: TextStyle(
+                                      color: Colors.orange,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              Text(
+                                '参考值: 0-1次',
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.6),
+                                  fontSize: 12,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text(
+                                    '浅睡比例 67%',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  Text(
+                                    '偏高',
+                                    style: TextStyle(
+                                      color: Colors.orange,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              Text(
+                                '参考值: <55%',
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.6),
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Physiological indicators
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              _buildSleepPhysioChip('心率', '$avgHeartRate',
+                                  Icons.favorite, Colors.red),
+                              const SizedBox(width: 8),
+                              _buildSleepPhysioChip('血氧', '$avgSpo2%',
+                                  Icons.bloodtype, Colors.blue),
+                              const SizedBox(width: 8),
+                              _buildSleepPhysioChip('体温', '$avgTemp°C',
+                                  Icons.thermostat, Colors.orange),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF2C2344),
       body: SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            children: [
-              _buildHeader(),
-              _buildSleepFlowCard(),
-              buildSleepRecords(),
-              const SizedBox(height: 24),
-            ],
-          ),
+        child: Stack(
+          children: [
+            SingleChildScrollView(
+              child: Column(
+                children: [
+                  _buildHeader(),
+                  _buildSleepFlowCard(),
+                  buildSleepRecords(),
+                  const SizedBox(height: 24),
+                ],
+              ),
+            ),
+            // Sleep record popup
+            if (_showSleepPopup) _buildSleepPopup(),
+          ],
         ),
       ),
       bottomNavigationBar: const BottomTabBar(currentIndex: 2),

@@ -54,7 +54,7 @@ async def get_device_latest(device_id: str):
 
 @router.get("/api/device/{device_id}/history")
 async def get_device_history(
-    device_id: str, seconds: int = Query(default=600, ge=30, le=1800)
+    device_id: str, seconds: int = Query(default=600, ge=60, le=86400)
 ):
     result = get_device_history_events(device_id=device_id, seconds=seconds)
     return {

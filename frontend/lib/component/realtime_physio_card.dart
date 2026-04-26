@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../utils/color.dart';
 
 class RealtimePhysioCard extends StatefulWidget {
   final Map<String, dynamic>? latest;
@@ -50,6 +51,7 @@ class _RealtimePhysioCardState extends State<RealtimePhysioCard> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border, width: 1.5),
       ),
       child: Column(
         children: [

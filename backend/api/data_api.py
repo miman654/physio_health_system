@@ -9,6 +9,7 @@ from service.data_service import (
     upload_sport_record_service,
     get_sport_record_service,
     get_sport_calendar_service,
+    get_sport_week_service,
 )
 from repository.iot_repo import get_latest_device_event, get_recent_iot_raw_events
 
@@ -172,6 +173,16 @@ async def query_sport_calendar(
     month: int = Query(..., ge=1, le=12),
 ):
     result = get_sport_calendar_service(user_id=user_id, year=year, month=month)
+    return {
+        "code": 200,
+        "msg": "查询成功",
+        "data": result["data"],
+    }
+
+
+@router.get("/query/sport/week")
+async def query_sport_week(user_id: int = Query(...)):
+    result = get_sport_week_service(user_id=user_id)
     return {
         "code": 200,
         "msg": "查询成功",

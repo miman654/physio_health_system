@@ -249,6 +249,21 @@ class ApiService {
     }
   }
 
+  // 查询周运动数据 /data/query/sport/week
+  Future<Map<String, dynamic>> querySportWeek(int userId) async {
+    try {
+      debugPrint("调用查询周运动接口，userId: $userId");
+      final response = await _dio.get(
+        "/data/query/sport/week",
+        queryParameters: {"user_id": userId},
+      );
+      return response.data;
+    } on DioException catch (e) {
+      debugPrint("查询周运动数据失败: ${e.message}");
+      return {"code": -1, "msg": e.message ?? "周运动数据查询失败"};
+    }
+  }
+
   // ********************* 六、设备监控接口 *********************
   Future<Map<String, dynamic>> getDeviceLatest(String deviceId) async {
     try {
