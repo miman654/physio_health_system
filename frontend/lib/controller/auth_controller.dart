@@ -144,7 +144,12 @@ class AuthController extends GetxController {
       Get.snackbar("成功", result["msg"] ?? "用户注册成功",
           backgroundColor: Colors.green.withOpacity(0.8),
           colorText: Colors.white);
-      Get.back(); // 返回登录页
+
+      // 注册成功后自动登录并跳转主页
+      await login(
+        params["username"].toString(),
+        params["password"].toString(),
+      );
     } else if (result["code"] == 400) {
       Get.snackbar("注册失败", result["msg"] ?? "用户名已存在",
           backgroundColor: Colors.red.withOpacity(0.8),

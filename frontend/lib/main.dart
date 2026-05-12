@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:url_strategy/url_strategy.dart';
 // 导入页面文件
 import 'pages/login_page.dart';
+import 'pages/register_page.dart';
 import 'pages/home_page.dart';
 import 'pages/sport_page.dart';
 import 'pages/sport_calendar_page.dart';
@@ -86,6 +87,7 @@ class MyApp extends StatelessWidget {
       initialRoute: "/login",
       getPages: [
         GetPage(name: "/login", page: () => LoginPage()),
+        GetPage(name: "/register", page: () => const RegisterPage()),
         GetPage(name: "/home", page: () => HomePage()),
         GetPage(name: "/sport", page: () => const SportPage()),
         GetPage(name: "/sport-calendar", page: () => const SportCalendarPage()),
