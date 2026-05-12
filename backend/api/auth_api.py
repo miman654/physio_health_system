@@ -4,6 +4,7 @@ from fastapi.security import HTTPBearer
 import sqlite3
 import datetime
 import hashlib
+import re
 
 # 注意：这里导入的函数名是 generate_token（和 jwt_util.py 保持一致）
 from service.auth_service import login_service
@@ -43,6 +44,26 @@ class RegisterRequest(BaseModel):
     gender: str | None = None  # 新增性别字段
 
 
+def validate_password_strength(password: str) -> str | None:
+    issues = []
+
+    if len(password) < 8:
+        issues.append("长度至少 8 位")
+    if not re.search(r"[A-Z]", password):
+        issues.append("大写字母")
+    if not re.search(r"[a-z]", password):
+        issues.append("小写字母")
+    if not re.search(r"\d", password):
+        issues.append("数字")
+    if not re.search(r"[^\w\s]", password):
+        issues.append("符号")
+
+    if not issues:
+        return None
+
+    return f"密码不符合规则，缺少：{'、'.join(issues)}"
+
+
 # ==================== 核心接口 ====================
 # 注册接口 - POST /auth/register
 @router.post("/register")
@@ -53,10 +74,15 @@ async def user_register(request: RegisterRequest):
     if check_username_exists(request.username):
         raise HTTPException(status_code=400, detail="用户名已存在")
 
-    # 2. 对密码进行哈希处理
+    # 2. 重新校验密码强度，防止绕过前端校验
+    password_error = validate_password_strength(request.password)
+    if password_error:
+        raise HTTPException(status_code=400, detail=password_error)
+
+    # 3. 对密码进行哈希处理
     hashed_password = hashlib.sha256(request.password.encode()).hexdigest()
 
-    # 3. 创建新用户
+    # 4. 创建新用户
     try:
         user_id = create_user(
             username=request.username,
