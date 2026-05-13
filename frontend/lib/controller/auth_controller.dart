@@ -5,6 +5,7 @@ import '../api/ws_service.dart';
 import 'package:flutter/material.dart';
 import '../pages/login_page.dart';
 import '../pages/home_page.dart';
+import 'data_controller.dart';
 
 // 使用 GetX 状态管理框架，负责用户登录状态和业务逻辑。
 // 定义响应式状态
@@ -109,6 +110,10 @@ class AuthController extends GetxController {
       // 登录成功后加载用户详细信息
       await loadUserInfo();
 
+      // 关键改动：在跳转前，先完成首次数据同步
+      final dataCtrl = Get.find<DataController>();
+      await dataCtrl.refreshAllData();
+
       // 跳转到首页 - 添加错误处理
       if (navigateToHome) {
         try {
@@ -117,12 +122,6 @@ class AuthController extends GetxController {
           debugPrint("导航错误: $e");
           Get.offAll(() => HomePage());
         }
-      }
-
-      if (showSuccessMessage) {
-        Get.snackbar("成功", "登录成功，欢迎回来！",
-            backgroundColor: Colors.green.withOpacity(0.8),
-            colorText: Colors.white);
       }
 
       return true;
@@ -210,7 +209,7 @@ class AuthController extends GetxController {
 
     // 后台执行退出登录操作
     _apiService.logout().then((result) {
-      WsService.close();
+      WsService.close(showDisconnectNotice: false);
       // 清除本地缓存
       SharedPreferences.getInstance().then((prefs) {
         prefs.remove("token");
@@ -228,10 +227,6 @@ class AuthController extends GetxController {
       userHeight.value = 0.0;
 
       // 显示提示
-      if (result["code"] == 200) {
-        Get.snackbar("成功", result["msg"] ?? "已安全退出登录",
-            backgroundColor: Colors.green, colorText: Colors.white);
-      }
     }).catchError((error) {
       debugPrint("退出登录接口调用失败: $error");
     });
@@ -249,7 +244,7 @@ class AuthController extends GetxController {
 
     // 后台执行注销操作
     _apiService.deleteAccount().then((result) {
-      WsService.close();
+      WsService.close(showDisconnectNotice: false);
       // 清除本地缓存
       SharedPreferences.getInstance().then((prefs) {
         prefs.remove("token");

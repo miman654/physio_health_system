@@ -6,6 +6,7 @@ import 'api_service.dart';
 class WsService {
   static WebSocketChannel? channel;
   static String? _connectedDeviceId;
+  static bool _suppressDisconnectNotice = false;
   static bool get isConnected => channel != null;
 
   static String get wsBaseUrl {
@@ -30,8 +31,7 @@ class WsService {
       }
 
       if (channel != null) {
-        channel!.sink.close();
-        channel = null;
+        close(showDisconnectNotice: false);
       }
 
       channel =
@@ -64,7 +64,10 @@ class WsService {
         onDone: () {
           channel = null;
           _connectedDeviceId = null;
-          Get.snackbar("WS提示", "实时数据连接已断开");
+          if (!_suppressDisconnectNotice) {
+            Get.snackbar("WS提示", "实时数据连接已断开");
+          }
+          _suppressDisconnectNotice = false;
         },
       );
     } catch (e) {
@@ -84,8 +87,9 @@ class WsService {
   }
 
   // 关闭WS连接
-  static void close() {
+  static void close({bool showDisconnectNotice = true}) {
     if (channel != null) {
+      _suppressDisconnectNotice = !showDisconnectNotice;
       channel!.sink.close();
       channel = null;
       _connectedDeviceId = null;

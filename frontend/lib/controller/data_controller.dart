@@ -174,7 +174,7 @@ class DataController extends GetxController {
   }
 
   void stopRealtimePhysioStream() {
-    WsService.close();
+    WsService.close(showDisconnectNotice: false);
     isRealtimeConnected.value = false;
     _realtimeDeviceId = null;
     realtimePhysioSnapshot.clear();

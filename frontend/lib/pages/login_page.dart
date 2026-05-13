@@ -16,6 +16,14 @@ class LoginPage extends StatelessWidget {
   final TextEditingController usernameCtrl = TextEditingController(text: '');
   final TextEditingController pwdCtrl = TextEditingController(text: '');
 
+  Future<void> _submitLogin() async {
+    if (authController.isLoading.value) return;
+    await authController.login(
+      usernameCtrl.text.trim(),
+      pwdCtrl.text.trim(),
+    );
+  }
+
   void _openRegisterPage() {
     Get.toNamed('/register');
   }
@@ -65,6 +73,8 @@ class LoginPage extends StatelessWidget {
               ),
               child: TextField(
                 controller: usernameCtrl,
+                textInputAction: TextInputAction.next,
+                onSubmitted: (_) => FocusScope.of(context).nextFocus(),
                 decoration: InputDecoration(
                   filled: true,
                   fillColor: Colors.white,
@@ -96,6 +106,8 @@ class LoginPage extends StatelessWidget {
               ),
               child: TextField(
                 controller: pwdCtrl,
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) => _submitLogin(),
                 obscureText: true,
                 decoration: InputDecoration(
                   filled: true,
@@ -129,10 +141,7 @@ class LoginPage extends StatelessWidget {
                   ),
                   onPressed: authController.isLoading.value
                       ? null
-                      : () => authController.login(
-                            usernameCtrl.text.trim(),
-                            pwdCtrl.text.trim(),
-                          ),
+                      : () => _submitLogin(),
                   child: authController.isLoading.value
                       ? const SizedBox(
                           width: 24,
