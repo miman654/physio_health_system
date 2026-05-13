@@ -53,6 +53,28 @@ def _on_message(client, userdata, msg):
 
 
 def _build_ws_snapshot(latest_record: dict):
+    if not latest_record:
+        status = "后端无实时数据"
+        return {
+            "device_id": "unknown",
+            "heart_rate": None,
+            "spo2": None,
+            "temp": None,
+            "scene": 0,
+            "timestamp": "",
+            "timestamp_ms": None,
+            "reason": "backend_empty",
+            "contact": None,
+            "signal": None,
+            "seq": None,
+            "valid_heart_rate": 0,
+            "valid_spo2": 0,
+            "valid_temp": 0,
+            "status": status,
+            "status_text": status,
+            "hint_text": "等待硬件开始上报实时数据",
+        }
+
     timestamp_ms = latest_record.get("display_time_ms")
     timestamp_text = _format_timestamp_ms(timestamp_ms)
     contact = latest_record.get("contact")
@@ -80,6 +102,11 @@ def _build_ws_snapshot(latest_record: dict):
         "valid_temp": latest_record.get("valid_temp"),
         "status": status,
         "status_text": status,
+        "hint_text": (
+            "请将手指稳定放到红光上并保持一段时间"
+            if status == "采集中"
+            else ("请重新调整手指位置" if status == "信号差" else "数据正常")
+        ),
     }
 
 

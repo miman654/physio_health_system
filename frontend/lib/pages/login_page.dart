@@ -3,18 +3,24 @@ import 'package:get/get.dart';
 
 import '../controller/auth_controller.dart';
 
-class LoginPage extends StatelessWidget {
+class LoginPage extends StatefulWidget {
   LoginPage({super.key}) {
     if (!Get.isRegistered<AuthController>()) {
       Get.put(AuthController());
     }
   }
 
+  @override
+  State<LoginPage> createState() => _LoginPageState();
+}
+
+class _LoginPageState extends State<LoginPage> {
   static const primaryColor = Color(0xFFFFB7C5);
 
   final AuthController authController = Get.find<AuthController>();
   final TextEditingController usernameCtrl = TextEditingController(text: '');
   final TextEditingController pwdCtrl = TextEditingController(text: '');
+  bool _passwordVisible = false;
 
   Future<void> _submitLogin() async {
     if (authController.isLoading.value) return;
@@ -108,7 +114,7 @@ class LoginPage extends StatelessWidget {
                 controller: pwdCtrl,
                 textInputAction: TextInputAction.done,
                 onSubmitted: (_) => _submitLogin(),
-                obscureText: true,
+                obscureText: !_passwordVisible,
                 decoration: InputDecoration(
                   filled: true,
                   fillColor: Colors.white,
@@ -116,6 +122,20 @@ class LoginPage extends StatelessWidget {
                   hintText: '请输入密码',
                   hintStyle: TextStyle(color: Colors.grey[400]),
                   prefixIcon: Icon(Icons.lock, color: primaryColor),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _passwordVisible
+                          ? Icons.visibility
+                          : Icons.visibility_off,
+                      color: primaryColor,
+                      size: 18,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _passwordVisible = !_passwordVisible;
+                      });
+                    },
+                  ),
                   border: const OutlineInputBorder(
                     borderRadius: BorderRadius.all(Radius.circular(16)),
                     borderSide: BorderSide.none,

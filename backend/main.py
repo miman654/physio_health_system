@@ -96,10 +96,9 @@ async def websocket_device_latest(websocket: WebSocket, device_id: str):
 
     try:
         latest = get_latest_device_event(device_id=device_id)
-        if latest:
-            await websocket.send_json(
-                {"type": "device_latest", "data": build_ws_snapshot(latest)}
-            )
+        await websocket.send_json(
+            {"type": "device_latest", "data": build_ws_snapshot(latest)}
+        )
 
         while True:
             await websocket.receive_text()

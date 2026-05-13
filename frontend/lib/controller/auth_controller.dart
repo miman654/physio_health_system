@@ -12,6 +12,7 @@ import 'data_controller.dart';
 class AuthController extends GetxController {
   final ApiService _apiService = ApiService();
   RxBool isLoading = false.obs; // 加载状态可观察
+  bool _isRegistering = false;
   RxString token = "".obs; // 登录令牌可观察
   RxInt userId = 0.obs; // 用户ID可观察
   RxString username = "".obs; // 用户名可观察
@@ -91,6 +92,7 @@ class AuthController extends GetxController {
     // 显示加载中
     isLoading.value = true;
     var result = await _apiService.login(username.trim(), password.trim());
+    debugPrint('login() response: $result');
     // 隐藏加载中
     isLoading.value = false;
 
@@ -122,6 +124,13 @@ class AuthController extends GetxController {
           debugPrint("导航错误: $e");
           Get.offAll(() => HomePage());
         }
+        // 再次确保首页数据已经刷新（有时导航后首次连接可能丢失）
+        try {
+          final dataCtrl = Get.find<DataController>();
+          await dataCtrl.refreshAllData();
+        } catch (e) {
+          debugPrint('登录后刷新数据失败: $e');
+        }
       }
 
       return true;
@@ -139,6 +148,11 @@ class AuthController extends GetxController {
 
   // 注册功能（适配接口的400：用户名已存在）
   Future<bool> register(Map<String, dynamic> params) async {
+    if (_isRegistering) {
+      debugPrint('register() ignored because a request is already in progress');
+      return true;
+    }
+
     // 表单校验
     if (params["username"].trim().isEmpty ||
         params["password"].trim().isEmpty) {
@@ -147,26 +161,32 @@ class AuthController extends GetxController {
       return false;
     }
 
+    _isRegistering = true;
     isLoading.value = true;
-    var result = await _apiService.register(params);
-    isLoading.value = false;
 
-    if (result["code"] == 200) {
-      // 注册成功后自动登录并进入主页
-      final loginOk = await login(
-        params["username"].toString(),
-        params["password"].toString(),
-      );
+    try {
+      final result = await _apiService.register(params);
+      debugPrint('register() response: $result');
 
-      return loginOk;
-    } else if (result["code"] == 400) {
-      Get.snackbar("注册失败", result["msg"] ?? "用户名已存在",
-          backgroundColor: Colors.red.withOpacity(0.8),
-          colorText: Colors.white);
+      if (result["code"] == 200) {
+        // 注册成功后自动登录并进入主页
+        final loginOk = await login(
+          params["username"].toString(),
+          params["password"].toString(),
+        );
+        return loginOk;
+      } else if (result["code"] == 400) {
+        Get.snackbar("注册失败", result["msg"] ?? "用户名已存在",
+            backgroundColor: Colors.red.withOpacity(0.8),
+            colorText: Colors.white);
+        return false;
+      }
+
       return false;
+    } finally {
+      isLoading.value = false;
+      _isRegistering = false;
     }
-
-    return false;
   }
 
   Future<bool> updateProfile({int? age, double? weight, double? height}) async {

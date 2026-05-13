@@ -1,12 +1,13 @@
 import 'dart:convert';
 import 'package:web_socket_channel/web_socket_channel.dart';
-import 'package:get/get.dart';
 import 'api_service.dart';
+import '../utils/user_notice.dart';
 
 class WsService {
   static WebSocketChannel? channel;
   static String? _connectedDeviceId;
   static bool _suppressDisconnectNotice = false;
+  static DateTime? _lastDisconnectNoticeAt;
   static bool get isConnected => channel != null;
 
   static String get wsBaseUrl {
@@ -37,7 +38,7 @@ class WsService {
       channel =
           WebSocketChannel.connect(Uri.parse("$wsBaseUrl/ws/device/$deviceId"));
       _connectedDeviceId = deviceId;
-      Get.snackbar("成功", "实时生理数据连接成功");
+      UserNotice.showInfoOnce(title: '提示', message: '实时数据已连接');
       // 监听WS消息
       channel!.stream.listen(
         (message) {
@@ -59,13 +60,13 @@ class WsService {
         onError: (e) {
           channel = null;
           _connectedDeviceId = null;
-          Get.snackbar("WS错误", "实时数据连接异常：$e");
+          _showBackendDownNotice('后台异常，实时连接已断开');
         },
         onDone: () {
           channel = null;
           _connectedDeviceId = null;
           if (!_suppressDisconnectNotice) {
-            Get.snackbar("WS提示", "实时数据连接已断开");
+            _showBackendDownNotice('后台异常，实时连接已断开');
           }
           _suppressDisconnectNotice = false;
         },
@@ -73,7 +74,7 @@ class WsService {
     } catch (e) {
       channel = null;
       _connectedDeviceId = null;
-      Get.snackbar("错误", "实时数据连接失败：$e");
+      _showBackendDownNotice('后台异常，实时连接失败');
     }
   }
 
@@ -82,7 +83,7 @@ class WsService {
     if (channel != null) {
       channel!.sink.add(msg);
     } else {
-      Get.snackbar("提示", "实时连接未建立，无法发送消息");
+      UserNotice.showInfoOnce(title: '提示', message: '实时连接未建立，请稍后再试');
     }
   }
 
@@ -94,5 +95,15 @@ class WsService {
       channel = null;
       _connectedDeviceId = null;
     }
+  }
+
+  static void _showBackendDownNotice(String message) {
+    final now = DateTime.now();
+    if (_lastDisconnectNoticeAt != null &&
+        now.difference(_lastDisconnectNoticeAt!) < const Duration(seconds: 8)) {
+      return;
+    }
+    _lastDisconnectNoticeAt = now;
+    UserNotice.showBackendUnavailable(message: message);
   }
 }

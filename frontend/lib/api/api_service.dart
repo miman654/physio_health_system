@@ -1,10 +1,50 @@
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:get/get.dart';
+import 'package:get/get.dart' hide Response;
 import 'package:flutter/material.dart';
+import '../utils/user_notice.dart';
 
 class ApiService {
   final Dio _dio = Dio();
+
+  String _friendlyRequestMessage(DioException e) {
+    switch (e.type) {
+      case DioExceptionType.connectionTimeout:
+      case DioExceptionType.sendTimeout:
+      case DioExceptionType.receiveTimeout:
+        return '服务响应超时，请稍后再试';
+      case DioExceptionType.connectionError:
+        return '当前无法连接后台，请检查后端是否已启动';
+      case DioExceptionType.cancel:
+        return '请求已取消';
+      case DioExceptionType.badCertificate:
+        return '连接安全证书异常，请稍后重试';
+      case DioExceptionType.badResponse:
+        final statusCode = e.response?.statusCode ?? 0;
+        if (statusCode == 401) return '登录已过期，请重新登录';
+        if (statusCode == 403) return '没有权限执行该操作';
+        if (statusCode == 404) return '请求的服务不存在';
+        if (statusCode >= 500) return '后台服务暂时异常，请稍后再试';
+        return '请求失败，请稍后重试';
+      case DioExceptionType.unknown:
+        final message = (e.message ?? '').toLowerCase();
+        if (message.contains('xmlhttprequest') ||
+            message.contains('failed to fetch')) {
+          return '后台服务暂时不可用，请稍后再试';
+        }
+        return '网络异常，请稍后再试';
+    }
+  }
+
+  String _friendlyResponseMessage(Response<dynamic>? response) {
+    final statusCode = response?.statusCode ?? 0;
+    if (statusCode == 422) return '输入格式有误，请检查后重试';
+    if (statusCode == 401) return '登录已失效，请重新登录';
+    if (statusCode == 403) return '当前操作没有权限';
+    if (statusCode == 404) return '未找到对应数据';
+    if (statusCode >= 500) return '后台服务暂时异常，请稍后再试';
+    return '请求失败，请稍后重试';
+  }
 
   // 根据不同平台设置不同的 baseUrl
   static String get baseUrl {
@@ -40,30 +80,22 @@ class ApiService {
         },
         // 请求错误统一处理（适配接口的400/500错误格式）
         onError: (DioException e, handler) {
-          // 解析后端错误信息，适配接口的400/500返回格式
-          String errorMsg = "网络请求失败";
-          if (e.response != null) {
-            // 处理 FastAPI 的 422 验证错误
-            if (e.response?.statusCode == 422) {
-              errorMsg = "参数验证失败，请检查输入格式";
-            }
-            // 处理自定义错误信息
-            else if (e.response?.data["detail"] != null) {
-              errorMsg = e.response?.data["detail"]; // 用户名已存在等校验错误
-            } else if (e.response?.data["msg"] != null) {
-              errorMsg = e.response?.data["msg"]; // 接口自定义错误
-            } else {
-              errorMsg = "状态码：${e.response?.statusCode}";
-            }
-          } else if (e.message != null) {
-            errorMsg = e.message!;
+          final statusCode = e.response?.statusCode ?? 0;
+          final isBackendDown = e.type == DioExceptionType.connectionError ||
+              e.type == DioExceptionType.connectionTimeout ||
+              e.type == DioExceptionType.receiveTimeout ||
+              e.type == DioExceptionType.sendTimeout ||
+              statusCode >= 500 ||
+              e.type == DioExceptionType.unknown;
+          final message = e.response != null
+              ? _friendlyResponseMessage(e.response)
+              : _friendlyRequestMessage(e);
+
+          if (isBackendDown) {
+            UserNotice.showBackendUnavailable(message: message);
+          } else {
+            UserNotice.showInfoOnce(title: '提示', message: message);
           }
-          Get.snackbar(
-            "接口错误",
-            errorMsg,
-            backgroundColor: Colors.red.withOpacity(0.8),
-            colorText: Colors.white,
-          );
           handler.next(e);
         },
       ),
@@ -83,7 +115,7 @@ class ApiService {
       if (e.response?.statusCode == 401) {
         return {"code": 401, "msg": e.response?.data["detail"] ?? "用户名或密码错误"};
       }
-      return {"code": -1, "msg": e.message ?? "登录失败"};
+      return {"code": -1, "msg": _friendlyRequestMessage(e)};
     }
   }
 
@@ -96,7 +128,7 @@ class ApiService {
       if (e.response?.statusCode == 400) {
         return {"code": 400, "msg": e.response?.data["detail"] ?? "注册失败"};
       }
-      return {"code": -1, "msg": e.message ?? "注册失败"};
+      return {"code": -1, "msg": _friendlyRequestMessage(e)};
     }
   }
 
@@ -112,7 +144,7 @@ class ApiService {
       if (e.response?.statusCode == 400) {
         return {"code": 400, "msg": e.response?.data["detail"] ?? "用户名校验失败"};
       }
-      return {"code": -1, "msg": e.message ?? "用户名校验失败"};
+      return {"code": -1, "msg": _friendlyRequestMessage(e)};
     }
   }
 
@@ -128,7 +160,7 @@ class ApiService {
       if (e.response?.statusCode == 404) {
         return {"code": 404, "msg": e.response?.data["detail"] ?? "用户不存在"};
       }
-      return {"code": -1, "msg": e.message ?? "获取用户信息失败"};
+      return {"code": -1, "msg": _friendlyRequestMessage(e)};
     }
   }
 
@@ -146,7 +178,7 @@ class ApiService {
       if (e.response?.statusCode == 401) {
         return {"code": 401, "msg": "token已失效，请重新登录"};
       }
-      return {"code": -1, "msg": e.message ?? "资料更新失败"};
+      return {"code": -1, "msg": _friendlyRequestMessage(e)};
     }
   }
 
@@ -159,7 +191,7 @@ class ApiService {
       if (e.response?.statusCode == 401) {
         return {"code": 401, "msg": "token已失效"};
       }
-      return {"code": -1, "msg": e.message ?? "退出登录失败"};
+      return {"code": -1, "msg": _friendlyRequestMessage(e)};
     }
   }
 
@@ -172,7 +204,7 @@ class ApiService {
       if (e.response?.statusCode == 500) {
         return {"code": 500, "msg": e.response?.data["detail"] ?? "注销失败"};
       }
-      return {"code": -1, "msg": e.message ?? "注销失败"};
+      return {"code": -1, "msg": _friendlyRequestMessage(e)};
     }
   }
 
@@ -188,7 +220,7 @@ class ApiService {
       if (e.response?.statusCode == 400) {
         return {"code": 400, "msg": e.response?.data["detail"] ?? "参数错误"};
       }
-      return {"code": -1, "msg": e.message ?? "生理数据上传失败"};
+      return {"code": -1, "msg": _friendlyRequestMessage(e)};
     }
   }
 
@@ -202,7 +234,7 @@ class ApiService {
       );
       return response.data;
     } on DioException catch (e) {
-      return {"code": -1, "msg": e.message ?? "生理数据查询失败"};
+      return {"code": -1, "msg": _friendlyRequestMessage(e)};
     }
   }
 
@@ -217,7 +249,7 @@ class ApiService {
       if (e.response?.statusCode == 400) {
         return {"code": 400, "msg": e.response?.data["detail"] ?? "参数错误"};
       }
-      return {"code": -1, "msg": e.message ?? "睡眠记录上传失败"};
+      return {"code": -1, "msg": _friendlyRequestMessage(e)};
     }
   }
 
@@ -231,7 +263,7 @@ class ApiService {
       );
       return response.data;
     } on DioException catch (e) {
-      return {"code": -1, "msg": e.message ?? "睡眠记录查询失败"};
+      return {"code": -1, "msg": _friendlyRequestMessage(e)};
     }
   }
 
@@ -247,7 +279,7 @@ class ApiService {
       if (e.response?.statusCode == 400) {
         return {"code": 400, "msg": e.response?.data["detail"] ?? "参数错误"};
       }
-      return {"code": -1, "msg": e.message ?? "运动记录上传失败"};
+      return {"code": -1, "msg": _friendlyRequestMessage(e)};
     }
   }
 
@@ -263,7 +295,7 @@ class ApiService {
       return response.data;
     } on DioException catch (e) {
       debugPrint("查询运动记录失败: ${e.message}");
-      return {"code": -1, "msg": e.message ?? "运动记录查询失败"};
+      return {"code": -1, "msg": _friendlyRequestMessage(e)};
     }
   }
 
@@ -279,7 +311,7 @@ class ApiService {
       return response.data;
     } on DioException catch (e) {
       debugPrint("查询运动月历失败: ${e.message}");
-      return {"code": -1, "msg": e.message ?? "运动月历查询失败"};
+      return {"code": -1, "msg": _friendlyRequestMessage(e)};
     }
   }
 
@@ -294,7 +326,7 @@ class ApiService {
       return response.data;
     } on DioException catch (e) {
       debugPrint("查询周运动数据失败: ${e.message}");
-      return {"code": -1, "msg": e.message ?? "周运动数据查询失败"};
+      return {"code": -1, "msg": _friendlyRequestMessage(e)};
     }
   }
 
@@ -306,7 +338,7 @@ class ApiService {
       );
       return response.data;
     } on DioException catch (e) {
-      return {"code": -1, "msg": e.message ?? "获取设备最新态失败"};
+      return {"code": -1, "msg": _friendlyRequestMessage(e)};
     }
   }
 
@@ -321,7 +353,7 @@ class ApiService {
       );
       return response.data;
     } on DioException catch (e) {
-      return {"code": -1, "msg": e.message ?? "获取设备历史失败"};
+      return {"code": -1, "msg": _friendlyRequestMessage(e)};
     }
   }
 
@@ -344,15 +376,8 @@ class ApiService {
         if (e.response?.statusCode == 500) {
           return {"code": 500, "msg": "AI服务暂时不可用，请稍后重试"};
         }
-        // 处理其他错误
-        if (e.response?.data["detail"] != null) {
-          return {
-            "code": e.response?.statusCode ?? -1,
-            "msg": e.response?.data["detail"]
-          };
-        }
       }
-      return {"code": -1, "msg": e.message ?? "生理数据AI分析失败"};
+      return {"code": -1, "msg": _friendlyRequestMessage(e)};
     }
   }
 
@@ -367,7 +392,7 @@ class ApiService {
       if (e.response?.statusCode == 400) {
         return {"code": 400, "msg": e.response?.data["detail"] ?? "参数错误"};
       }
-      return {"code": -1, "msg": e.message ?? "运动营养建议获取失败"};
+      return {"code": -1, "msg": _friendlyRequestMessage(e)};
     }
   }
 }

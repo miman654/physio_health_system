@@ -183,13 +183,8 @@ class _RealtimePhysioCardState extends State<RealtimePhysioCard> {
   }
 
   String get _statusText {
-    final raw = _rawStatusText;
-    if (raw != null && raw.isNotEmpty) {
-      return raw;
-    }
     if (_isOffline) return '离线';
     if (_collecting) return '采集中';
-    if (_isSignalBad) return '信号差';
     return '正常';
   }
 
@@ -199,26 +194,17 @@ class _RealtimePhysioCardState extends State<RealtimePhysioCard> {
         return Colors.grey;
       case '采集中':
         return Colors.orange;
-      case '信号差':
-        return Colors.red;
       default:
         return Colors.green;
     }
   }
 
   String get _hintText {
-    final raw = widget.latest?['hint_text']?.toString();
-    if (raw != null && raw.isNotEmpty) {
-      return raw;
-    }
     if (_statusText == '离线') {
-      return '请将手指放到 MAX30102 红光上面';
+      return '暂无实时数据，请稍后再查看';
     }
     if (_statusText == '采集中') {
-      return '请保持30s手指放在红光上面';
-    }
-    if (_statusText == '信号差') {
-      return '请重新调整手指位置并保持稳定';
+      return '数据正在更新中，请继续保持当前状态';
     }
     return '数据稳定，可继续观察实时变化';
   }
@@ -229,25 +215,15 @@ class _RealtimePhysioCardState extends State<RealtimePhysioCard> {
   }
 
   bool get _isOffline =>
-      (widget.latest?['contact'] == 0) || widget.latest == null;
-
-  String? get _rawStatusText => widget.latest?['status_text']?.toString();
+      widget.latest == null || widget.latest?['contact'] == 0;
 
   bool get _collecting {
     if (_isOffline) return false;
-    final raw = _rawStatusText;
+    final raw = widget.latest?['status_text']?.toString();
     if (raw != null && raw.isNotEmpty) {
       return raw == '采集中';
     }
-    return widget.latest?['contact'] == 1 && !_isSignalBad;
-  }
-
-  bool get _isSignalBad {
-    final signal = widget.latest?['signal'];
-    if (signal is num) {
-      return signal.toDouble() < 0.2;
-    }
-    return false;
+    return widget.latest?['contact'] == 1;
   }
 
   bool _isInvalid(String key) {

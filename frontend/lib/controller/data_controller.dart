@@ -163,13 +163,27 @@ class DataController extends GetxController {
       isRealtimeConnected.value = false;
     }
 
-    await WsService.connect(
-      deviceId: deviceId,
-      onMessage: applyRealtimePhysioSnapshot,
-    );
-    isRealtimeConnected.value = WsService.isConnected;
-    if (isRealtimeConnected.value) {
-      _realtimeDeviceId = deviceId;
+    // 尝试连接，最多重试 3 次，间隔 300ms
+    const int maxAttempts = 3;
+    int attempt = 0;
+    while (attempt < maxAttempts) {
+      attempt += 1;
+      try {
+        await WsService.connect(
+          deviceId: deviceId,
+          onMessage: applyRealtimePhysioSnapshot,
+        );
+        isRealtimeConnected.value = WsService.isConnected;
+        if (isRealtimeConnected.value) {
+          _realtimeDeviceId = deviceId;
+          break;
+        }
+      } catch (e) {
+        debugPrint('WebSocket 连接尝试 $attempt 失败: $e');
+      }
+
+      // 等待一小段时间再重试
+      await Future.delayed(const Duration(milliseconds: 300));
     }
   }
 

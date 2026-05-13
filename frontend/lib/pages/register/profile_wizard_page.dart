@@ -36,7 +36,11 @@ class ProfileWizardPage extends StatefulWidget {
 class _ProfileWizardPageState extends State<ProfileWizardPage> {
   final AuthController authController = Get.find<AuthController>();
   late FixedExtentScrollController _pickerController;
-  late int _selectedValue;
+  FixedExtentScrollController? _decimalPickerController;
+  late int _selectedIntegerValue;
+  late int _selectedDecimalValue;
+
+  bool get _usesDecimalPicker => widget.stepIndex != 0;
 
   String get _stepKey {
     switch (widget.stepIndex) {
@@ -49,13 +53,17 @@ class _ProfileWizardPageState extends State<ProfileWizardPage> {
     }
   }
 
-  int _initialValueFromDraft() {
+  double _initialValueFromDraft() {
     final draft = _draft();
     final value = draft[_stepKey];
     if (value is num) {
-      return value.round().clamp(widget.minValue, widget.maxValue);
+      return value
+          .toDouble()
+          .clamp(widget.minValue.toDouble(), widget.maxValue.toDouble());
     }
-    return widget.initialValue.clamp(widget.minValue, widget.maxValue);
+    return widget.initialValue
+        .toDouble()
+        .clamp(widget.minValue.toDouble(), widget.maxValue.toDouble());
   }
 
   Map<String, dynamic> _draft() {
@@ -86,17 +94,6 @@ class _ProfileWizardPageState extends State<ProfileWizardPage> {
     });
   }
 
-  String get _unitLeftLabel {
-    switch (widget.stepIndex) {
-      case 1:
-        return '英寸';
-      case 2:
-        return '磅';
-      default:
-        return '';
-    }
-  }
-
   void _goBack(BuildContext context) {
     if (Navigator.of(context).canPop()) {
       Get.back();
@@ -108,7 +105,9 @@ class _ProfileWizardPageState extends State<ProfileWizardPage> {
 
   Future<void> _goNext() async {
     final draft = _draft();
-    draft[_stepKey] = _selectedValue;
+    draft[_stepKey] = _usesDecimalPicker
+        ? _selectedIntegerValue + (_selectedDecimalValue / 10.0)
+        : _selectedIntegerValue;
 
     if (widget.isFinalStep) {
       await authController.register(draft);
@@ -119,34 +118,57 @@ class _ProfileWizardPageState extends State<ProfileWizardPage> {
   }
 
   Widget _buildUnitToggle() {
-    if (widget.stepIndex == 0) {
+    return const SizedBox.shrink();
+  }
+
+  String _displayValueText() {
+    if (!_usesDecimalPicker) {
+      return '$_selectedIntegerValue';
+    }
+
+    return '$_selectedIntegerValue.${_selectedDecimalValue}';
+  }
+
+  Widget _buildDecimalPicker() {
+    if (!_usesDecimalPicker) {
       return const SizedBox.shrink();
     }
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Container(
-        height: 46,
-        decoration: BoxDecoration(
-          color: AppColors.card,
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: _UnitToggleItem(
-                label: _unitLeftLabel,
-                selected: false,
-              ),
-            ),
-            Expanded(
-              child: _UnitToggleItem(
-                label: widget.unit,
-                selected: true,
-              ),
-            ),
-          ],
+      padding: const EdgeInsets.only(top: 7),
+      child: SizedBox(
+        height: 58,
+        child: RotatedBox(
+          quarterTurns: 3,
+          child: CupertinoPicker(
+            scrollController: _decimalPickerController,
+            backgroundColor: Colors.transparent,
+            magnification: 1.06,
+            useMagnifier: true,
+            itemExtent: 34,
+            selectionOverlay: const SizedBox.shrink(),
+            onSelectedItemChanged: (index) {
+              setState(() {
+                _selectedDecimalValue = index;
+              });
+            },
+            children: List.generate(10, (index) {
+              final selected = index == _selectedDecimalValue;
+              return RotatedBox(
+                quarterTurns: 1,
+                child: Center(
+                  child: Text(
+                    '0.$index',
+                    style: TextStyle(
+                      fontSize: selected ? 18 : 14,
+                      fontWeight: selected ? FontWeight.w800 : FontWeight.w400,
+                      color: selected ? AppColors.textTitle : AppColors.textTip,
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
         ),
       ),
     );
@@ -155,15 +177,23 @@ class _ProfileWizardPageState extends State<ProfileWizardPage> {
   @override
   void initState() {
     super.initState();
-    _selectedValue = _initialValueFromDraft();
+    final initialValue = _initialValueFromDraft();
+    _selectedIntegerValue = initialValue.floor();
+    _selectedDecimalValue = ((initialValue * 10).round() % 10).clamp(0, 9);
     _pickerController = FixedExtentScrollController(
-      initialItem: _selectedValue - widget.minValue,
+      initialItem: _selectedIntegerValue - widget.minValue,
     );
+    if (_usesDecimalPicker) {
+      _decimalPickerController = FixedExtentScrollController(
+        initialItem: _selectedDecimalValue,
+      );
+    }
   }
 
   @override
   void dispose() {
     _pickerController.dispose();
+    _decimalPickerController?.dispose();
     super.dispose();
   }
 
@@ -218,7 +248,7 @@ class _ProfileWizardPageState extends State<ProfileWizardPage> {
                       child: FittedBox(
                         fit: BoxFit.scaleDown,
                         child: Text(
-                          '$_selectedValue',
+                          _displayValueText(),
                           style: const TextStyle(
                             fontSize: 50,
                             fontWeight: FontWeight.w900,
@@ -231,52 +261,53 @@ class _ProfileWizardPageState extends State<ProfileWizardPage> {
                   ),
                   const SizedBox(height: 4),
                   SizedBox(
-                    height: 150,
-                    child: CupertinoPicker(
-                      scrollController: _pickerController,
-                      backgroundColor: Colors.transparent,
-                      magnification: 1.08,
-                      useMagnifier: true,
-                      itemExtent: 34,
-                      selectionOverlay: Container(
-                        decoration: const BoxDecoration(
-                          border: Border(
-                            top: BorderSide(
-                              color: AppColors.textTitle,
-                              width: 1.2,
-                            ),
-                            bottom: BorderSide(color: Colors.transparent),
-                          ),
-                        ),
-                      ),
-                      onSelectedItemChanged: (index) {
-                        setState(() {
-                          _selectedValue = widget.minValue + index;
-                        });
-                      },
-                      children: List.generate(
-                        widget.maxValue - widget.minValue + 1,
-                        (index) {
-                          final value = widget.minValue + index;
-                          final selected = value == _selectedValue;
-                          return Center(
-                            child: Text(
-                              value.toString(),
-                              style: TextStyle(
-                                fontSize: selected ? 30 : 20,
-                                fontWeight: selected
-                                    ? FontWeight.w800
-                                    : FontWeight.w400,
-                                color: selected
-                                    ? AppColors.textTitle
-                                    : AppColors.textTip,
-                              ),
-                            ),
-                          );
+                    height: 132,
+                    child: RotatedBox(
+                      quarterTurns: 3,
+                      child: CupertinoPicker(
+                        scrollController: _pickerController,
+                        backgroundColor: Colors.transparent,
+                        magnification: 1.08,
+                        useMagnifier: true,
+                        itemExtent: 64,
+                        onSelectedItemChanged: (index) {
+                          setState(() {
+                            _selectedIntegerValue = widget.minValue + index;
+                            if (_usesDecimalPicker &&
+                                _selectedIntegerValue >= widget.maxValue) {
+                              _selectedDecimalValue = 0;
+                              _decimalPickerController?.jumpToItem(0);
+                            }
+                          });
                         },
+                        children: List.generate(
+                          widget.maxValue - widget.minValue + 1,
+                          (index) {
+                            final value = widget.minValue + index;
+                            final selected = value == _selectedIntegerValue;
+                            return RotatedBox(
+                              quarterTurns: 1,
+                              child: Center(
+                                child: Text(
+                                  value.toString(),
+                                  style: TextStyle(
+                                    fontSize: selected ? 30 : 20,
+                                    fontWeight: selected
+                                        ? FontWeight.w800
+                                        : FontWeight.w400,
+                                    color: selected
+                                        ? AppColors.textTitle
+                                        : AppColors.textTip,
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
                       ),
                     ),
                   ),
+                  _buildDecimalPicker(),
                   Text(
                     widget.unit,
                     style: const TextStyle(
@@ -351,34 +382,6 @@ class _ProfileWizardPageState extends State<ProfileWizardPage> {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _UnitToggleItem extends StatelessWidget {
-  const _UnitToggleItem({required this.label, required this.selected});
-
-  final String label;
-  final bool selected;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 42,
-      margin: const EdgeInsets.all(2),
-      decoration: BoxDecoration(
-        color: selected ? AppColors.primary : Colors.transparent,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      alignment: Alignment.center,
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.w700,
-          color: selected ? Colors.white : AppColors.textTip,
         ),
       ),
     );

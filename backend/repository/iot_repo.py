@@ -77,7 +77,8 @@ def save_iot_event(
         display_time_ms = server_received_at
 
         raw_event_id = None
-        if is_high_quality:
+        if parse_ok:
+            # 原始消息统一落库，确保 latest 表始终能关联到有效 raw_event_id
             cursor.execute(
                 """
                 INSERT INTO iot_raw_events (

@@ -16,8 +16,11 @@ class _RegisterPageState extends State<RegisterPage> {
 
   final TextEditingController usernameCtrl = TextEditingController();
   final TextEditingController pwdCtrl = TextEditingController();
+  final TextEditingController confirmPwdCtrl = TextEditingController();
 
   String selectedGender = '男';
+  bool _passwordVisible = false;
+  bool _confirmPasswordVisible = false;
 
   List<String> _passwordRuleIssues(String password) {
     final issues = <String>[];
@@ -58,16 +61,20 @@ class _RegisterPageState extends State<RegisterPage> {
   void dispose() {
     usernameCtrl.dispose();
     pwdCtrl.dispose();
+    confirmPwdCtrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final passwordText = pwdCtrl.text.trim();
+    final confirmPasswordText = confirmPwdCtrl.text.trim();
     final passwordIssues = _passwordRuleIssues(passwordText);
     final passwordHint = _passwordRuleHint(passwordText);
-    final canGoNext =
-        usernameCtrl.text.trim().isNotEmpty && passwordIssues.isEmpty;
+    final passwordsMatch = passwordText == confirmPasswordText;
+    final canGoNext = usernameCtrl.text.trim().isNotEmpty &&
+        passwordIssues.isEmpty &&
+        passwordsMatch;
 
     return Scaffold(
       backgroundColor: Colors.grey[50],
@@ -139,13 +146,27 @@ class _RegisterPageState extends State<RegisterPage> {
                     const SizedBox(height: 12),
                     TextField(
                       controller: pwdCtrl,
-                      obscureText: true,
+                      obscureText: !_passwordVisible,
                       onChanged: (_) => setState(() {}),
                       decoration: InputDecoration(
                         labelText: '密码',
                         hintText: '请输入注册密码',
                         hintStyle: TextStyle(color: Colors.grey[400]),
                         prefixIcon: const Icon(Icons.lock, color: primaryColor),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _passwordVisible
+                                ? Icons.visibility
+                                : Icons.visibility_off,
+                            color: primaryColor,
+                            size: 18,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _passwordVisible = !_passwordVisible;
+                            });
+                          },
+                        ),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                           borderSide: BorderSide.none,
@@ -168,6 +189,61 @@ class _RegisterPageState extends State<RegisterPage> {
                               passwordIssues.isEmpty && passwordText.isNotEmpty
                                   ? const Color(0xff1d9d72)
                                   : const Color(0xffd14d72),
+                          fontSize: 12,
+                          height: 1.3,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: confirmPwdCtrl,
+                      obscureText: !_confirmPasswordVisible,
+                      onChanged: (_) => setState(() {}),
+                      decoration: InputDecoration(
+                        labelText: '确认密码',
+                        hintText: '请再次输入密码',
+                        hintStyle: TextStyle(color: Colors.grey[400]),
+                        prefixIcon: const Icon(Icons.lock, color: primaryColor),
+                        suffixIcon: IconButton(
+                          onPressed: () {
+                            setState(() {
+                              _confirmPasswordVisible =
+                                  !_confirmPasswordVisible;
+                            });
+                          },
+                          icon: Icon(
+                            _confirmPasswordVisible
+                                ? Icons.visibility
+                                : Icons.visibility_off,
+                            color: primaryColor,
+                            size: 18,
+                          ),
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey[50],
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 14,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        confirmPasswordText.isEmpty
+                            ? ''
+                            : passwordsMatch
+                                ? '密码一致'
+                                : '两次输入的密码不一致',
+                        style: TextStyle(
+                          color: passwordsMatch
+                              ? const Color(0xff1d9d72)
+                              : const Color(0xffd14d72),
                           fontSize: 12,
                           height: 1.3,
                         ),
