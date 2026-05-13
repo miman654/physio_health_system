@@ -60,6 +60,43 @@ def create_user(
     return user_id
 
 
+# 更新用户基础资料
+def update_user_profile(
+    user_id: int,
+    age: int | None = None,
+    weight: float | None = None,
+    height: float | None = None,
+):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    fields = []
+    values = []
+
+    if age is not None:
+        fields.append("age = ?")
+        values.append(age)
+    if weight is not None:
+        fields.append("weight = ?")
+        values.append(weight)
+    if height is not None:
+        fields.append("height = ?")
+        values.append(height)
+
+    if not fields:
+        conn.close()
+        return get_user_by_id(user_id, include_inactive=False)
+
+    values.append(user_id)
+    cursor.execute(
+        f"UPDATE users SET {', '.join(fields)} WHERE id = ? AND is_active = 1",
+        values,
+    )
+    conn.commit()
+    conn.close()
+    return get_user_by_id(user_id, include_inactive=False)
+
+
 # 检查用户名是否存在
 def check_username_exists(username: str):
     conn = get_db_connection()

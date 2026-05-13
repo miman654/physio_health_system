@@ -14,8 +14,7 @@ def init_db():
     cursor = conn.cursor()
 
     # 1. 创建或更新用户表
-    cursor.execute(
-        """
+    cursor.execute("""
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT UNIQUE NOT NULL,
@@ -27,12 +26,10 @@ def init_db():
         is_active INTEGER DEFAULT 1,  
         create_time TEXT NOT NULL
     )
-    """
-    )
+    """)
 
     # 2. 生理数据表（含场景字段）
-    cursor.execute(
-        """
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS physio_data (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
@@ -44,12 +41,10 @@ def init_db():
             suggestion TEXT,
             FOREIGN KEY (user_id) REFERENCES users (id)
     )
-    """
-    )  # 0=静息 1=运动 2=睡眠
+    """)  # 0=静息 1=运动 2=睡眠
 
     # 2.1 物联网原始事件表（全量历史）
-    cursor.execute(
-        """
+    cursor.execute("""
     CREATE TABLE IF NOT EXISTS iot_raw_events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         device_id TEXT NOT NULL,
@@ -67,8 +62,7 @@ def init_db():
         signal REAL,
         ingest_error TEXT
     )
-    """
-    )
+    """)
 
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_raw_device_time ON iot_raw_events (device_id, server_received_at)"
@@ -81,8 +75,7 @@ def init_db():
     )
 
     # 2.2 设备最新态表（每个 device_id 只保留一行）
-    cursor.execute(
-        """
+    cursor.execute("""
     CREATE TABLE IF NOT EXISTS iot_device_latest (
         device_id TEXT PRIMARY KEY,
         last_raw_event_id INTEGER,
@@ -102,8 +95,7 @@ def init_db():
         signal REAL,
         updated_at INTEGER NOT NULL
     )
-    """
-    )
+    """)
 
     cursor.execute("PRAGMA table_info(iot_device_latest)")
     latest_columns = {row[1] for row in cursor.fetchall()}
@@ -116,8 +108,7 @@ def init_db():
         )
 
     # 3. 睡眠记录表
-    cursor.execute(
-        """
+    cursor.execute("""
     CREATE TABLE IF NOT EXISTS sleep_record (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,
@@ -131,12 +122,10 @@ def init_db():
         suggestion TEXT,
         FOREIGN KEY (user_id) REFERENCES users (id)
     )
-    """
-    )
+    """)
 
     # 4. 直接创建新的 sport_record 表（已删除旧表处理逻辑）
-    cursor.execute(
-        """
+    cursor.execute("""
     CREATE TABLE IF NOT EXISTS sport_record (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,
@@ -150,8 +139,7 @@ def init_db():
         suggestion TEXT,
         FOREIGN KEY (user_id) REFERENCES users (id)
     )
-    """
-    )
+    """)
     print("iot_raw_events / iot_device_latest / sport_record 表创建成功")
 
     conn.commit()

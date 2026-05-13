@@ -3,7 +3,8 @@ import 'package:get/get.dart';
 import 'package:url_strategy/url_strategy.dart';
 // 导入页面文件
 import 'pages/login_page.dart';
-import 'pages/register_page.dart';
+import 'pages/register/register_page.dart';
+import 'pages/register/profile_wizard_page.dart';
 import 'pages/home_page.dart';
 import 'pages/sport_page.dart';
 import 'pages/sport_calendar_page.dart';
@@ -88,6 +89,46 @@ class MyApp extends StatelessWidget {
       getPages: [
         GetPage(name: "/login", page: () => LoginPage()),
         GetPage(name: "/register", page: () => const RegisterPage()),
+        GetPage(
+          name: "/register/age",
+          page: () => const ProfileWizardPage(
+            stepIndex: 0,
+            title: '你的年龄是多少?',
+            unit: '岁',
+            minValue: 10,
+            maxValue: 100,
+            initialValue: 25,
+            stepColor: Color(0xFFF7F5B5),
+            nextRoute: '/register/height',
+          ),
+        ),
+        GetPage(
+          name: "/register/height",
+          page: () => const ProfileWizardPage(
+            stepIndex: 1,
+            title: '你身高多少?',
+            unit: '厘米',
+            minValue: 100,
+            maxValue: 220,
+            initialValue: 170,
+            stepColor: Color(0xFFD8EEF2),
+            nextRoute: '/register/weight',
+          ),
+        ),
+        GetPage(
+          name: "/register/weight",
+          page: () => const ProfileWizardPage(
+            stepIndex: 2,
+            title: '你的体重是多少?',
+            unit: '公斤',
+            minValue: 30,
+            maxValue: 200,
+            initialValue: 60,
+            stepColor: Color(0xFFF7F5B5),
+            nextRoute: '/home',
+            isFinalStep: true,
+          ),
+        ),
         GetPage(name: "/home", page: () => HomePage()),
         GetPage(name: "/sport", page: () => const SportPage()),
         GetPage(name: "/sport-calendar", page: () => const SportCalendarPage()),

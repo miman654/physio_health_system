@@ -132,10 +132,8 @@ def _decorate_snapshot(device_id: str, payload: dict):
     if status == "离线":
         snapshot["heart_rate"] = None
         snapshot["spo2"] = None
-        snapshot["temp"] = None
         snapshot["valid_heart_rate"] = 0
         snapshot["valid_spo2"] = 0
-        snapshot["valid_temp"] = 0
     elif status == "采集中":
         snapshot["hint_text"] = "请保持30s手指放在红光上面"
 

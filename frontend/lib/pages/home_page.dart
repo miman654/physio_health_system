@@ -7,18 +7,24 @@ import '../controller/auth_controller.dart';
 import '../controller/data_controller.dart';
 import '../utils/color.dart';
 
-class HomePage extends StatelessWidget {
-  HomePage({super.key});
+class HomePage extends StatefulWidget {
+  const HomePage({super.key});
 
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
   final AuthController authCtrl = Get.find<AuthController>();
   final DataController dataCtrl = Get.find<DataController>();
 
-  void _initPage() {
+  @override
+  void initState() {
+    super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
         await dataCtrl.refreshAllData();
         await dataCtrl.syncRealtimePhysioSnapshot();
-        await dataCtrl.startRealtimePhysioStream();
       } catch (e) {
         debugPrint('首页刷新失败: $e');
       }
@@ -67,7 +73,6 @@ class HomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    _initPage();
     return Scaffold(
       backgroundColor: AppColors.background,
       body: RefreshIndicator(

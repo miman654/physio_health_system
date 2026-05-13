@@ -100,6 +100,22 @@ class ApiService {
     }
   }
 
+  // 用户名查重 /auth/check-username
+  Future<Map<String, dynamic>> checkUsername(String username) async {
+    try {
+      final response = await _dio.post(
+        "/auth/check-username",
+        data: {"username": username},
+      );
+      return response.data;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 400) {
+        return {"code": 400, "msg": e.response?.data["detail"] ?? "用户名校验失败"};
+      }
+      return {"code": -1, "msg": e.message ?? "用户名校验失败"};
+    }
+  }
+
   // 获取用户信息 /auth/userinfo
   Future<Map<String, dynamic>> getUserInfo() async {
     try {
@@ -113,6 +129,24 @@ class ApiService {
         return {"code": 404, "msg": e.response?.data["detail"] ?? "用户不存在"};
       }
       return {"code": -1, "msg": e.message ?? "获取用户信息失败"};
+    }
+  }
+
+  // 更新用户基础资料 /auth/profile
+  Future<Map<String, dynamic>> updateProfile(
+    Map<String, dynamic> params,
+  ) async {
+    try {
+      final response = await _dio.patch("/auth/profile", data: params);
+      return response.data;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 400) {
+        return {"code": 400, "msg": e.response?.data["detail"] ?? "资料更新失败"};
+      }
+      if (e.response?.statusCode == 401) {
+        return {"code": 401, "msg": "token已失效，请重新登录"};
+      }
+      return {"code": -1, "msg": e.message ?? "资料更新失败"};
     }
   }
 

@@ -177,7 +177,7 @@ class _RealtimePhysioCardState extends State<RealtimePhysioCard> {
   }
 
   String get _displayTemp {
-    if (_isOffline || _isInvalid('valid_temp')) return '--';
+    if (_isInvalid('valid_temp')) return '--';
     final value = widget.latest?['temp'];
     return _formatNumber(value, decimals: 1);
   }

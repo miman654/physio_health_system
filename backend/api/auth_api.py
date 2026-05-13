@@ -44,6 +44,16 @@ class RegisterRequest(BaseModel):
     gender: str | None = None  # 新增性别字段
 
 
+class UsernameCheckRequest(BaseModel):
+    username: str
+
+
+class UpdateProfileRequest(BaseModel):
+    age: int | None = None
+    weight: float | None = None
+    height: float | None = None
+
+
 def validate_password_strength(password: str) -> str | None:
     issues = []
 
@@ -62,6 +72,23 @@ def validate_password_strength(password: str) -> str | None:
         return None
 
     return f"密码不符合规则，缺少：{'、'.join(issues)}"
+
+
+# 用户名查重接口 - POST /auth/check-username
+@router.post("/check-username")
+async def check_username(request: UsernameCheckRequest):
+    from repository.user_repo import check_username_exists
+
+    username = request.username.strip()
+    if not username:
+        raise HTTPException(status_code=400, detail="用户名不能为空")
+
+    exists = check_username_exists(username)
+    return {
+        "code": 200,
+        "msg": "用户名已存在" if exists else "用户名可用",
+        "data": {"exists": exists},
+    }
 
 
 # ==================== 核心接口 ====================
@@ -189,3 +216,40 @@ async def get_user_info(current_user: dict = Depends(get_current_user)):
             "height": user["height"],
         },
     }
+
+
+# 更新用户基础资料（注册后补全资料）
+@router.patch("/profile")
+async def complete_user_profile(
+    request: UpdateProfileRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    from repository.user_repo import update_user_profile
+
+    user_id = current_user["user_id"]
+
+    try:
+        user = update_user_profile(
+            user_id=user_id,
+            age=request.age,
+            weight=request.weight,
+            height=request.height,
+        )
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在或账号已注销")
+
+        return {
+            "code": 200,
+            "msg": "资料更新成功",
+            "data": {
+                "username": user["username"],
+                "age": user["age"],
+                "gender": user["gender"],
+                "weight": user["weight"],
+                "height": user["height"],
+            },
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"资料更新失败: {str(e)}")

@@ -74,12 +74,17 @@ class AuthController extends GetxController {
   }
 
   // 登录功能（适配接口返回：data内包含user_id/token/username）
-  Future<void> login(String username, String password) async {
+  Future<bool> login(
+    String username,
+    String password, {
+    bool navigateToHome = true,
+    bool showSuccessMessage = true,
+  }) async {
     // 表单校验
     if (username.trim().isEmpty || password.trim().isEmpty) {
       Get.snackbar("提示", "用户名和密码不能为空",
           backgroundColor: Colors.orange, colorText: Colors.white);
-      return;
+      return false;
     }
 
     // 显示加载中
@@ -105,16 +110,22 @@ class AuthController extends GetxController {
       await loadUserInfo();
 
       // 跳转到首页 - 添加错误处理
-      try {
-        Get.offAllNamed("/home");
-      } catch (e) {
-        debugPrint("导航错误: $e");
-        Get.offAll(() => HomePage());
+      if (navigateToHome) {
+        try {
+          Get.offAllNamed("/home");
+        } catch (e) {
+          debugPrint("导航错误: $e");
+          Get.offAll(() => HomePage());
+        }
       }
 
-      Get.snackbar("成功", "登录成功，欢迎回来！",
-          backgroundColor: Colors.green.withOpacity(0.8),
-          colorText: Colors.white);
+      if (showSuccessMessage) {
+        Get.snackbar("成功", "登录成功，欢迎回来！",
+            backgroundColor: Colors.green.withOpacity(0.8),
+            colorText: Colors.white);
+      }
+
+      return true;
     } else {
       String errorMsg = result["msg"] ?? "登录失败";
       if (result["code"] == 401) {
@@ -123,17 +134,18 @@ class AuthController extends GetxController {
       Get.snackbar("登录失败", errorMsg,
           backgroundColor: Colors.red.withOpacity(0.8),
           colorText: Colors.white);
+      return false;
     }
   }
 
   // 注册功能（适配接口的400：用户名已存在）
-  Future<void> register(Map<String, dynamic> params) async {
+  Future<bool> register(Map<String, dynamic> params) async {
     // 表单校验
     if (params["username"].trim().isEmpty ||
         params["password"].trim().isEmpty) {
       Get.snackbar("提示", "用户名和密码不能为空",
           backgroundColor: Colors.orange, colorText: Colors.white);
-      return;
+      return false;
     }
 
     isLoading.value = true;
@@ -141,20 +153,49 @@ class AuthController extends GetxController {
     isLoading.value = false;
 
     if (result["code"] == 200) {
-      Get.snackbar("成功", result["msg"] ?? "用户注册成功",
-          backgroundColor: Colors.green.withOpacity(0.8),
-          colorText: Colors.white);
-
-      // 注册成功后自动登录并跳转主页
-      await login(
+      // 注册成功后自动登录并进入主页
+      final loginOk = await login(
         params["username"].toString(),
         params["password"].toString(),
       );
+
+      return loginOk;
     } else if (result["code"] == 400) {
       Get.snackbar("注册失败", result["msg"] ?? "用户名已存在",
           backgroundColor: Colors.red.withOpacity(0.8),
           colorText: Colors.white);
+      return false;
     }
+
+    return false;
+  }
+
+  Future<bool> updateProfile({int? age, double? weight, double? height}) async {
+    final params = <String, dynamic>{
+      if (age != null) 'age': age,
+      if (weight != null) 'weight': weight,
+      if (height != null) 'height': height,
+    };
+
+    if (params.isEmpty) {
+      return true;
+    }
+
+    isLoading.value = true;
+    var result = await _apiService.updateProfile(params);
+    isLoading.value = false;
+
+    if (result["code"] == 200) {
+      final data = result["data"] ?? {};
+      userAge.value = data["age"] ?? userAge.value;
+      userWeight.value = (data["weight"] ?? userWeight.value).toDouble();
+      userHeight.value = (data["height"] ?? userHeight.value).toDouble();
+      return true;
+    }
+
+    Get.snackbar("资料更新失败", result["msg"] ?? "操作失败，请稍后重试",
+        backgroundColor: Colors.red.withOpacity(0.8), colorText: Colors.white);
+    return false;
   }
 
 // 退出登录

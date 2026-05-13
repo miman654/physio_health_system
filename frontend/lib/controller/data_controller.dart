@@ -33,11 +33,12 @@ class DataController extends GetxController {
       {String deviceId = "hi3861-01"}) async {
     final result = await _apiService.getDeviceLatest(deviceId);
     if (result["code"] == 200 && result["data"] is Map) {
-      realtimePhysioSnapshot.value = _normalizeRealtimePhysio(
+      final normalized = _normalizeRealtimePhysio(
         Map<String, dynamic>.from(result["data"] as Map),
       );
-    } else {
-      realtimePhysioSnapshot.clear();
+      if (_shouldApplyRealtimeSnapshot(normalized)) {
+        realtimePhysioSnapshot.value = normalized;
+      }
     }
   }
 
@@ -90,7 +91,9 @@ class DataController extends GetxController {
 
   void applyRealtimePhysioSnapshot(Map<String, dynamic> data) {
     final normalized = _normalizeRealtimePhysio(data);
-    realtimePhysioSnapshot.value = normalized;
+    if (_shouldApplyRealtimeSnapshot(normalized)) {
+      realtimePhysioSnapshot.value = normalized;
+    }
 
     if (physioDataList.isNotEmpty) {
       final latest = physioDataList.first;
@@ -107,6 +110,46 @@ class DataController extends GetxController {
     while (physioDataList.length > 20) {
       physioDataList.removeLast();
     }
+  }
+
+  bool _shouldApplyRealtimeSnapshot(Map<String, dynamic> incoming) {
+    if (realtimePhysioSnapshot.isEmpty) {
+      return true;
+    }
+
+    final current = Map<String, dynamic>.from(realtimePhysioSnapshot);
+    final currentSeq = _extractIntValue(current, ["seq"]);
+    final incomingSeq = _extractIntValue(incoming, ["seq"]);
+    if (currentSeq != null &&
+        incomingSeq != null &&
+        incomingSeq != currentSeq) {
+      return incomingSeq > currentSeq;
+    }
+
+    final currentTimestamp =
+        _extractIntValue(current, ["timestamp_ms", "timestamp"]);
+    final incomingTimestamp =
+        _extractIntValue(incoming, ["timestamp_ms", "timestamp"]);
+    if (currentTimestamp != null &&
+        incomingTimestamp != null &&
+        incomingTimestamp != currentTimestamp) {
+      return incomingTimestamp > currentTimestamp;
+    }
+
+    return true;
+  }
+
+  int? _extractIntValue(Map<String, dynamic> data, List<String> keys) {
+    for (final key in keys) {
+      final value = data[key];
+      if (value is int) return value;
+      if (value is double) return value.toInt();
+      if (value is String) {
+        final parsed = int.tryParse(value);
+        if (parsed != null) return parsed;
+      }
+    }
+    return null;
   }
 
   Future<void> startRealtimePhysioStream(

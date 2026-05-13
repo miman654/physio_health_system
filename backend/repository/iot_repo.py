@@ -234,8 +234,10 @@ def _upsert_latest(
             UPDATE iot_device_latest
             SET
                 display_time_ms = ?,
+                temp = ?,
                 heart_rate = ?,
                 spo2 = ?,
+                valid_temp = ?,
                 valid_heart_rate = ?,
                 valid_spo2 = ?,
                 reason = ?,
@@ -246,8 +248,10 @@ def _upsert_latest(
             """,
             (
                 display_time_ms,
+                temp,
                 merged_heart_rate,
                 merged_spo2,
+                valid_temp,
                 valid_heart_rate,
                 valid_spo2,
                 reason,
@@ -388,7 +392,9 @@ def get_device_history_events(device_id: str, seconds: int = 600):
         conn.close()
 
 
-def get_averaged_metrics_in_time_range(start_time_ms: int, end_time_ms: int, min_data_points: int = 3):
+def get_averaged_metrics_in_time_range(
+    start_time_ms: int, end_time_ms: int, min_data_points: int = 3
+):
     conn = get_db_connection()
     try:
         cursor = conn.cursor()

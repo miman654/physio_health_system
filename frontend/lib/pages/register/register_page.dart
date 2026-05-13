@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
-import '../controller/auth_controller.dart';
+import '../../api/api_service.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -12,13 +12,10 @@ class RegisterPage extends StatefulWidget {
 
 class _RegisterPageState extends State<RegisterPage> {
   static const primaryColor = Color(0xFFFFB7C5);
+  final ApiService _apiService = ApiService();
 
-  final AuthController authController = Get.find<AuthController>();
   final TextEditingController usernameCtrl = TextEditingController();
   final TextEditingController pwdCtrl = TextEditingController();
-  final TextEditingController ageCtrl = TextEditingController();
-  final TextEditingController weightCtrl = TextEditingController();
-  final TextEditingController heightCtrl = TextEditingController();
 
   String selectedGender = '男';
 
@@ -61,9 +58,6 @@ class _RegisterPageState extends State<RegisterPage> {
   void dispose() {
     usernameCtrl.dispose();
     pwdCtrl.dispose();
-    ageCtrl.dispose();
-    weightCtrl.dispose();
-    heightCtrl.dispose();
     super.dispose();
   }
 
@@ -72,6 +66,8 @@ class _RegisterPageState extends State<RegisterPage> {
     final passwordText = pwdCtrl.text.trim();
     final passwordIssues = _passwordRuleIssues(passwordText);
     final passwordHint = _passwordRuleHint(passwordText);
+    final canGoNext =
+        usernameCtrl.text.trim().isNotEmpty && passwordIssues.isEmpty;
 
     return Scaffold(
       backgroundColor: Colors.grey[50],
@@ -126,7 +122,8 @@ class _RegisterPageState extends State<RegisterPage> {
                         labelText: '用户名',
                         hintText: '请输入注册用户名',
                         hintStyle: TextStyle(color: Colors.grey[400]),
-                        prefixIcon: const Icon(Icons.person, color: primaryColor),
+                        prefixIcon:
+                            const Icon(Icons.person, color: primaryColor),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                           borderSide: BorderSide.none,
@@ -134,7 +131,9 @@ class _RegisterPageState extends State<RegisterPage> {
                         filled: true,
                         fillColor: Colors.grey[50],
                         contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 14),
+                          horizontal: 16,
+                          vertical: 14,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -154,7 +153,9 @@ class _RegisterPageState extends State<RegisterPage> {
                         filled: true,
                         fillColor: Colors.grey[50],
                         contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 14),
+                          horizontal: 16,
+                          vertical: 14,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -163,73 +164,13 @@ class _RegisterPageState extends State<RegisterPage> {
                       child: Text(
                         passwordHint,
                         style: TextStyle(
-                          color: passwordIssues.isEmpty && passwordText.isNotEmpty
-                              ? const Color(0xff1d9d72)
-                              : const Color(0xffd14d72),
+                          color:
+                              passwordIssues.isEmpty && passwordText.isNotEmpty
+                                  ? const Color(0xff1d9d72)
+                                  : const Color(0xffd14d72),
                           fontSize: 12,
                           height: 1.3,
                         ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: ageCtrl,
-                      keyboardType: TextInputType.number,
-                      decoration: InputDecoration(
-                        labelText: '年龄',
-                        hintText: '请输入年龄',
-                        hintStyle: TextStyle(color: Colors.grey[400]),
-                        prefixIcon:
-                            const Icon(Icons.calendar_today, color: primaryColor),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none,
-                        ),
-                        filled: true,
-                        fillColor: Colors.grey[50],
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 14),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: weightCtrl,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      decoration: InputDecoration(
-                        labelText: '体重(kg)',
-                        hintText: '请输入体重（如70.5）',
-                        hintStyle: TextStyle(color: Colors.grey[400]),
-                        prefixIcon:
-                            const Icon(Icons.line_weight, color: primaryColor),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none,
-                        ),
-                        filled: true,
-                        fillColor: Colors.grey[50],
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 14),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: heightCtrl,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      decoration: InputDecoration(
-                        labelText: '身高(cm)',
-                        hintText: '请输入身高（如175.0）',
-                        hintStyle: TextStyle(color: Colors.grey[400]),
-                        prefixIcon: const Icon(Icons.height, color: primaryColor),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none,
-                        ),
-                        filled: true,
-                        fillColor: Colors.grey[50],
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 14),
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -315,62 +256,71 @@ class _RegisterPageState extends State<RegisterPage> {
                         ),
                         const SizedBox(width: 10),
                         Expanded(
-                          child: Obx(() {
-                            final isLoading = authController.isLoading.value;
-                            final submitEnabled = !isLoading &&
-                                usernameCtrl.text.trim().isNotEmpty &&
-                                _passwordRuleIssues(pwdCtrl.text.trim()).isEmpty;
-
-                            return ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: submitEnabled
-                                    ? primaryColor
-                                    : primaryColor.withOpacity(0.45),
-                                padding: const EdgeInsets.symmetric(vertical: 14),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                elevation: 3,
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: canGoNext
+                                  ? primaryColor
+                                  : primaryColor.withOpacity(0.45),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
                               ),
-                              onPressed: submitEnabled
-                                  ? () async {
-                                      final registerParams = <String, dynamic>{
-                                        'username': usernameCtrl.text.trim(),
-                                        'password': pwdCtrl.text.trim(),
-                                        'age': int.tryParse(ageCtrl.text.trim()),
-                                        'weight': double.tryParse(
-                                            weightCtrl.text.trim()),
-                                        'height': double.tryParse(
-                                            heightCtrl.text.trim()),
-                                        'gender': selectedGender,
-                                      };
+                              elevation: 3,
+                            ),
+                            onPressed: canGoNext
+                                ? () async {
+                                    final username = usernameCtrl.text.trim();
+                                    final password = pwdCtrl.text.trim();
+                                    final result = await _apiService
+                                        .checkUsername(username);
 
-                                      registerParams.removeWhere(
-                                        (key, value) => value == null,
-                                      );
-
-                                      await authController.register(registerParams);
+                                    if (!mounted) {
+                                      return;
                                     }
-                                  : null,
-                              child: isLoading
-                                  ? const SizedBox(
-                                      width: 20,
-                                      height: 20,
-                                      child: CircularProgressIndicator(
-                                        color: Colors.white,
-                                        strokeWidth: 2,
-                                      ),
-                                    )
-                                  : const Text(
-                                      '注册',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w500,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                            );
-                          }),
+
+                                    if (result["code"] == 200) {
+                                      final exists =
+                                          result["data"]?["exists"] == true;
+                                      if (exists) {
+                                        Get.snackbar(
+                                          '注册失败',
+                                          '用户名已存在',
+                                          backgroundColor:
+                                              Colors.red.withOpacity(0.8),
+                                          colorText: Colors.white,
+                                        );
+                                        return;
+                                      }
+
+                                      Get.toNamed(
+                                        '/register/age',
+                                        arguments: <String, dynamic>{
+                                          'username': username,
+                                          'password': password,
+                                          'gender': selectedGender,
+                                        },
+                                      );
+                                      return;
+                                    }
+
+                                    Get.snackbar(
+                                      '注册失败',
+                                      result["msg"] ?? '用户名校验失败',
+                                      backgroundColor:
+                                          Colors.red.withOpacity(0.8),
+                                      colorText: Colors.white,
+                                    );
+                                  }
+                                : null,
+                            child: const Text(
+                              '注册',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
                         ),
                       ],
                     ),
