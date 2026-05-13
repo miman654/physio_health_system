@@ -1,11 +1,11 @@
 // AI page
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import '../api/api_service.dart';
-import '../component/bottom_tab_bar.dart';
-import '../controller/auth_controller.dart';
-import '../utils/api_formatter.dart';
-import '../utils/color.dart';
+import '../../api/api_service.dart';
+import '../../component/bottom_tab_bar.dart';
+import '../../controller/auth_controller.dart';
+import '../../utils/api_formatter.dart';
+import '../../utils/color.dart';
 
 class AIPage extends StatefulWidget {
   const AIPage({super.key});

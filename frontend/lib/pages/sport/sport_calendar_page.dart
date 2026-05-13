@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 
-import '../controller/auth_controller.dart';
-import '../controller/data_controller.dart';
+import '../../controller/auth_controller.dart';
+import '../../controller/data_controller.dart';
 
 class SportCalendarPage extends StatefulWidget {
   const SportCalendarPage({super.key});

@@ -6,11 +6,11 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 
-import '../api/api_service.dart';
-import '../component/bottom_tab_bar.dart';
-import '../controller/auth_controller.dart';
-import '../controller/data_controller.dart';
-import '../utils/color.dart';
+import '../../api/api_service.dart';
+import '../../component/bottom_tab_bar.dart';
+import '../../controller/auth_controller.dart';
+import '../../controller/data_controller.dart';
+import '../../utils/color.dart';
 
 class SportPage extends StatefulWidget {
   const SportPage({super.key});

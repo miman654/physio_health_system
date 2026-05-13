@@ -5,10 +5,10 @@ import 'package:intl/intl.dart';
 import 'package:get/get.dart';
 import 'package:fl_chart/fl_chart.dart';
 
-import '../api/api_service.dart';
-import '../controller/auth_controller.dart';
-import '../controller/sleep_controller.dart';
-import '../component/bottom_tab_bar.dart';
+import '../../api/api_service.dart';
+import '../../controller/auth_controller.dart';
+import '../../controller/sleep_controller.dart';
+import '../../component/bottom_tab_bar.dart';
 
 class SleepPage extends StatefulWidget {
   const SleepPage({super.key});

@@ -4,10 +4,10 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
-import '../api/api_service.dart';
-import '../component/realtime_physio_card.dart';
-import '../controller/data_controller.dart';
-import '../model/device_telemetry.dart';
+import '../../api/api_service.dart';
+import '../../component/realtime_physio_card.dart';
+import '../../controller/data_controller.dart';
+import '../../model/device_telemetry.dart';
 
 enum _TrendMetric { heartRate, spo2, temp }
 
