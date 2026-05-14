@@ -68,7 +68,10 @@ def save_iot_event(
         and hr is not None
         and 50 <= hr <= 120
         and spo2 is not None
-        and 94.0 <= spo2 <= 100.0
+        and 80.0 <= spo2 <= 100.0
+    )
+    should_store_raw_event = (
+        parse_ok and fields["device_id"] != "unknown" and is_high_quality
     )
 
     conn = get_db_connection()
@@ -77,8 +80,8 @@ def save_iot_event(
         display_time_ms = server_received_at
 
         raw_event_id = None
-        if parse_ok:
-            # 原始消息统一落库，确保 latest 表始终能关联到有效 raw_event_id
+        if should_store_raw_event:
+            # 只保存高质量原始数据，latest 表仍然保留对当前状态的更新
             cursor.execute(
                 """
                 INSERT INTO iot_raw_events (
