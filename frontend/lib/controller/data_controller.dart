@@ -299,9 +299,6 @@ class DataController extends GetxController {
     isLoading.value = false;
 
     if (result["code"] == 200) {
-      Get.snackbar("成功", result["msg"] ?? "运动记录上传成功",
-          backgroundColor: Colors.green.withOpacity(0.7),
-          colorText: Colors.white);
       await querySportRecord(); // 上传成功后刷新列表
       return result; // 返回结果，包含 calorie 数据
     } else {
