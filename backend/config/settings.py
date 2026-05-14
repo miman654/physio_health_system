@@ -12,7 +12,7 @@ DB_PATH = str(BASE_DIR / "physio_data.db")
 PORT = 8008
 
 # MQTT 接入配置
-MQTT_HOST = "192.168.137.1"
+MQTT_HOST = "10.64.55.100"
 MQTT_PORT = 1883
 MQTT_TOPIC = "pubTopic"
 MQTT_CLIENT_ID = "physio-health-ingest"
