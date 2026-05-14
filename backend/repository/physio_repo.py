@@ -51,6 +51,8 @@ def insert_sleep_record(
     sleep_end: str,
     sleep_score: int,
     deep_sleep_duration: int,
+    light_sleep_duration: int,
+    awake_count: int,
     avg_heart_rate: int,
     avg_spo2: int,
     avg_temp: float,
@@ -60,14 +62,16 @@ def insert_sleep_record(
     cursor = conn.cursor()
     cursor.execute(
         """INSERT INTO sleep_record 
-        (user_id, sleep_start, sleep_end, sleep_score, deep_sleep_duration, avg_heart_rate, avg_spo2, avg_temp, suggestion) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (user_id, sleep_start, sleep_end, sleep_score, deep_sleep_duration, light_sleep_duration, awake_count, avg_heart_rate, avg_spo2, avg_temp, suggestion) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             user_id,
             sleep_start,
             sleep_end,
             sleep_score,
             deep_sleep_duration,
+            light_sleep_duration,
+            awake_count,
             avg_heart_rate,
             avg_spo2,
             avg_temp,
@@ -84,7 +88,7 @@ def get_sleep_record_by_user(user_id: int, limit: int = 7):
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        """SELECT id, user_id, sleep_start, sleep_end, sleep_score, deep_sleep_duration, avg_heart_rate, avg_spo2, avg_temp, suggestion 
+        """SELECT id, user_id, sleep_start, sleep_end, sleep_score, deep_sleep_duration, light_sleep_duration, awake_count, avg_heart_rate, avg_spo2, avg_temp, suggestion 
         FROM sleep_record WHERE user_id=? ORDER BY sleep_start DESC LIMIT ?""",
         (user_id, limit),
     )

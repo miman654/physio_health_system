@@ -101,16 +101,28 @@ def ai_physio_analysis_service(user_id: int):
         latest_sleep = sleep_data[0]
         sleep_score = latest_sleep["sleep_score"]
         deep_sleep = latest_sleep["deep_sleep_duration"]
+        light_sleep = latest_sleep.get("light_sleep_duration")
+        awake_count = latest_sleep.get("awake_count")
 
         response_data["latest_sleep"] = {
             "sleep_score": sleep_score,
             "deep_sleep_duration": deep_sleep,
+            "light_sleep_duration": light_sleep,
+            "awake_count": awake_count,
             "sleep_start": latest_sleep["sleep_start"],
         }
 
-        prompt_parts.append(
-            f"【最新睡眠数据】睡眠评分：{sleep_score}分，深睡时长：{deep_sleep}分钟，入睡时间：{latest_sleep['sleep_start']}"
-        )
+        sleep_metrics_text = [
+            f"睡眠评分：{sleep_score}分",
+            f"深睡时长：{deep_sleep}分钟",
+        ]
+        if light_sleep is not None:
+            sleep_metrics_text.append(f"浅睡时长：{light_sleep}分钟")
+        if awake_count is not None:
+            sleep_metrics_text.append(f"清醒次数：{awake_count}次")
+        sleep_metrics_text.append(f"入睡时间：{latest_sleep['sleep_start']}")
+
+        prompt_parts.append("【最新睡眠数据】" + "，".join(sleep_metrics_text))
 
         if sleep_score >= 90:
             prompt_parts.append("【睡眠评价】睡眠质量优秀，继续保持")

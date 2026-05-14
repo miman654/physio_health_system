@@ -374,6 +374,8 @@ def upload_sleep_record_service(
 
     # 4. 计算深度睡眠时间（默认占总睡眠的25%左右）
     deep_sleep_duration = int(total_minutes * 0.25)
+    # 4.1 计算浅睡时长（简单逻辑：剩余时间视作浅睡）
+    light_sleep_duration = max(total_minutes - deep_sleep_duration, 0)
 
     # 5. 从IoT设备获取真实生理数据
     start_dt = datetime.strptime(sleep_start, "%Y-%m-%d %H:%M:%S")
@@ -387,6 +389,40 @@ def upload_sleep_record_service(
     avg_heart_rate = iot_metrics.get("heart_rate")
     avg_spo2 = iot_metrics.get("spo2")
     avg_temp = iot_metrics.get("temp")
+
+    # 5.1 简单统计醒来次数：检查原始事件中是否含有 wake/awake 关键字（轻量启发式）
+    from repository.db import get_db_connection as _get_db_conn
+
+    awake_count = 0
+    conn = None
+    try:
+        conn = _get_db_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT payload_json FROM iot_raw_events WHERE server_received_at >= ? AND server_received_at <= ?",
+            (start_ms, end_ms),
+        )
+        rows = cursor.fetchall()
+        last_flag = False
+        # 合并连续的唤醒事件为一次计数
+        for (payload_json,) in rows:
+            if not payload_json:
+                continue
+            text = str(payload_json).lower()
+            is_awake = "awake" in text or "wake" in text
+            if is_awake and not last_flag:
+                awake_count += 1
+                last_flag = True
+            elif not is_awake:
+                last_flag = False
+    except Exception:
+        awake_count = 0
+    finally:
+        try:
+            if conn is not None:
+                conn.close()
+        except Exception:
+            pass
 
     # 6. 调用AI生成睡眠建议
     from utils.ai_util import call_deepseek_api
@@ -426,6 +462,8 @@ def upload_sleep_record_service(
         sleep_end,
         sleep_score,
         deep_sleep_duration,
+        light_sleep_duration,
+        awake_count,
         avg_heart_rate,  # 新增
         avg_spo2,  # 新增
         avg_temp,  # 新增
@@ -440,6 +478,8 @@ def upload_sleep_record_service(
             "sleep_duration": total_minutes,  # 分钟
             "sleep_duration_hours": total_hours,  # 小时
             "deep_sleep_duration": deep_sleep_duration,
+            "light_sleep_duration": light_sleep_duration,
+            "awake_count": awake_count,
             "sleep_score": sleep_score,
             "avg_heart_rate": avg_heart_rate,
             "avg_spo2": avg_spo2,

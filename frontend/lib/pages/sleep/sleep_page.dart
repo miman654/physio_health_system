@@ -472,19 +472,11 @@ class _SleepPageState extends State<SleepPage> with TickerProviderStateMixin {
     return '${minutes}min';
   }
 
-  String _getScoreQuality(int score) {
-    if (score >= 85) return '优秀';
-    if (score >= 70) return '良好';
-    if (score >= 60) return '一般';
-    return '较差';
-  }
-
   Widget buildSleepRecordItem(Map<String, dynamic> record) {
     final sleepStartRaw = record['sleep_start']?.toString();
     final sleepEndRaw = record['sleep_end']?.toString();
     final start = _formatDateTime(record['sleep_start']?.toString());
     final score = record['sleep_score'] ?? 0;
-    final deepSleep = record['deep_sleep_duration'] ?? 0;
     final avgHeartRate = record['avg_heart_rate'] ?? '--';
     final avgSpo2 = record['avg_spo2'] ?? '--';
     final avgTemp = record['avg_temp'] ?? '--';
@@ -533,7 +525,7 @@ class _SleepPageState extends State<SleepPage> with TickerProviderStateMixin {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    '$score分 ${_getScoreQuality(score)}',
+                    '$score分',
                     style: const TextStyle(
                         color: Colors.white,
                         fontSize: 11,
@@ -543,18 +535,6 @@ class _SleepPageState extends State<SleepPage> with TickerProviderStateMixin {
               ],
             ),
             const SizedBox(height: 8),
-            // 深睡
-            Row(
-              children: [
-                Icon(Icons.night_shelter,
-                    size: 14, color: Colors.blue.shade300),
-                const SizedBox(width: 4),
-                Text(
-                  '深睡: $deepSleep分钟',
-                  style: const TextStyle(color: Colors.white, fontSize: 13),
-                ),
-              ],
-            ),
             const SizedBox(height: 8),
             // 生理指标
             Row(

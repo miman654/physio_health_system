@@ -90,14 +90,16 @@ async def upload_sleep_record(request: SleepRecordRequest):
             "user_id": request.user_id,
             "sleep_start": request.sleep_start,
             "sleep_end": request.sleep_end,
-            "sleep_duration": result.get("sleep_duration", 480),  # 分钟
-            "sleep_duration_hours": result.get("sleep_duration_hours", 8.0),  # 小时
-            "deep_sleep_duration": result.get("deep_sleep_duration", 120),
-            "sleep_score": result.get("sleep_score", 80),
-            "avg_heart_rate": result.get("avg_heart_rate", 58),
-            "avg_spo2": result.get("avg_spo2", 97),
-            "avg_temp": result.get("avg_temp", 36.2),
-            "suggestion": result.get("suggestion", "睡眠质量良好，继续保持规律作息。"),
+            "sleep_duration": result.get("sleep_duration"),
+            "sleep_duration_hours": result.get("sleep_duration_hours"),
+            "deep_sleep_duration": result.get("deep_sleep_duration"),
+            "light_sleep_duration": result.get("light_sleep_duration"),
+            "awake_count": result.get("awake_count"),
+            "sleep_score": result.get("sleep_score"),
+            "avg_heart_rate": result.get("avg_heart_rate"),
+            "avg_spo2": result.get("avg_spo2"),
+            "avg_temp": result.get("avg_temp"),
+            "suggestion": result.get("suggestion"),
         },
     }
 

@@ -116,6 +116,8 @@ def init_db():
         sleep_end TEXT NOT NULL,
         sleep_score INTEGER NOT NULL,
         deep_sleep_duration INTEGER,
+        light_sleep_duration INTEGER,
+        awake_count INTEGER DEFAULT 0,
         avg_heart_rate INTEGER,
         avg_spo2 INTEGER,
         avg_temp REAL,
@@ -123,6 +125,18 @@ def init_db():
         FOREIGN KEY (user_id) REFERENCES users (id)
     )
     """)
+
+    # 如果已有表但缺少新列，则尝试添加列（向后兼容）
+    cursor.execute("PRAGMA table_info(sleep_record)")
+    sleep_columns = {row[1] for row in cursor.fetchall()}
+    if "light_sleep_duration" not in sleep_columns:
+        cursor.execute(
+            "ALTER TABLE sleep_record ADD COLUMN light_sleep_duration INTEGER"
+        )
+    if "awake_count" not in sleep_columns:
+        cursor.execute(
+            "ALTER TABLE sleep_record ADD COLUMN awake_count INTEGER DEFAULT 0"
+        )
 
     # 4. 直接创建新的 sport_record 表（已删除旧表处理逻辑）
     cursor.execute("""

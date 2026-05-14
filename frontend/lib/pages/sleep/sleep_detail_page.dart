@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -76,14 +74,11 @@ class SleepDetailPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final score = _toInt(record['sleep_score']);
     final deepSleep = _toInt(record['deep_sleep_duration']);
-    final lightSleep = math.max(deepSleep * 2, 0);
-    final remSleep = math.max((deepSleep * 0.5).round(), 0);
-    final totalSleep = deepSleep + lightSleep + remSleep;
+    final lightSleep = _toInt(record['light_sleep_duration']);
+    final totalSleep = deepSleep + lightSleep;
 
     final deepPercent = totalSleep > 0 ? (deepSleep / totalSleep) * 100 : 0.0;
     final lightPercent = totalSleep > 0 ? (lightSleep / totalSleep) * 100 : 0.0;
-    final remPercent = totalSleep > 0 ? (remSleep / totalSleep) * 100 : 0.0;
-
     final avgHeartRate = _toText(record['avg_heart_rate']);
     final avgSpo2 = _toText(record['avg_spo2']);
     final avgTemp = _toText(record['avg_temp']);
@@ -134,13 +129,6 @@ class SleepDetailPage extends StatelessWidget {
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        Text(
-                          '超过 ${(score * 1.2).toInt()}% 的用户',
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.7),
-                            fontSize: 14,
-                          ),
-                        ),
                       ],
                     ),
                     Row(
@@ -166,7 +154,7 @@ class SleepDetailPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 18),
                 Text(
-                  '睡眠质量${_qualityText(score)}。然而，睡眠期间醒了 2 次，略高于正常范围，存在易醒问题。',
+                  '睡眠质量${_qualityText(score)}。本次记录到醒来 ${_toInt(record['awake_count'])} 次。',
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.84),
                     fontSize: 15,
@@ -183,8 +171,6 @@ class SleepDetailPage extends StatelessWidget {
                           _stageRow('深睡', deepSleep, Colors.purple),
                           const SizedBox(height: 10),
                           _stageRow('浅睡', lightSleep, Colors.blue),
-                          const SizedBox(height: 10),
-                          _stageRow('快速眼动', remSleep, Colors.green),
                         ],
                       ),
                     ),
@@ -207,12 +193,6 @@ class SleepDetailPage extends StatelessWidget {
                                     radius: 35,
                                     title: '',
                                   ),
-                                  PieChartSectionData(
-                                    value: remPercent,
-                                    color: Colors.green,
-                                    radius: 35,
-                                    title: '',
-                                  ),
                                 ]
                               : [
                                   PieChartSectionData(
@@ -229,10 +209,6 @@ class SleepDetailPage extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 18),
-                _issueRow('清醒次数 2 次', '参考值: 0-1次'),
-                const SizedBox(height: 10),
-                _issueRow('浅睡比例 67%', '参考值: <55%'),
                 const SizedBox(height: 18),
                 Wrap(
                   spacing: 8,
@@ -297,36 +273,6 @@ class SleepDetailPage extends StatelessWidget {
             fontSize: 14,
             fontWeight: FontWeight.w600,
           ),
-        ),
-      ],
-    );
-  }
-
-  Widget _issueRow(String title, String reference) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              title,
-              style: const TextStyle(color: Colors.white, fontSize: 14),
-            ),
-            const Text(
-              '偏高',
-              style: TextStyle(
-                color: Colors.orange,
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 2),
-        Text(
-          reference,
-          style: TextStyle(color: Colors.white.withOpacity(0.62), fontSize: 12),
         ),
       ],
     );
