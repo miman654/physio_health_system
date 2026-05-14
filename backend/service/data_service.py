@@ -354,9 +354,6 @@ def upload_sleep_record_service(
 
         total_minutes = int((end_time - start_time).total_seconds() / 60)
 
-        if total_minutes < 3:
-            return {"status": "error", "msg": "睡眠时长不足3分钟，记录不会保存"}
-
         # 转换为小时
         total_hours = round(total_minutes / 60, 1)
 
