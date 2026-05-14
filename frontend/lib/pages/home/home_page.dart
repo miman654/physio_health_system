@@ -136,6 +136,59 @@ class _HomePageState extends State<HomePage> {
                       subtitle: '实时来自后端的最新有效数据',
                     );
                   }),
+                  // 离线时在首页 RealtimePhysioCard 外部显示提示卡片（白底粉框）
+                  Obx(() {
+                    final latest = dataCtrl.realtimePhysioSnapshot.isNotEmpty
+                        ? Map<String, dynamic>.from(
+                            dataCtrl.realtimePhysioSnapshot)
+                        : null;
+                    final isOffline = latest == null || latest['contact'] == 0;
+                    if (!isOffline) return const SizedBox.shrink();
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 10, bottom: 6),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          border:
+                              Border.all(color: AppColors.border, width: 1.5),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(Icons.fingerprint,
+                                color: AppColors.primaryDark, size: 20),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: const [
+                                  Text(
+                                    '指尖放置小贴士',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
+                                  SizedBox(height: 6),
+                                  Text(
+                                    '• 指尖盖住LED红光与接收区，别漏光。\n• 轻贴皮肤，别太紧。手指保持静止。',
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        height: 1.4,
+                                        color: Colors.black54),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
                   const SizedBox(height: 10),
                   Obx(() {
                     if (dataCtrl.aiPhysioSuggestions.isEmpty) {
