@@ -11,11 +11,13 @@ import '../../model/device_telemetry.dart';
 
 enum _TrendMetric { heartRate, spo2, temp }
 
+enum _DebounceBucket { oneSecond, twoSeconds, fiveSeconds }
+
 class _TrendPoint {
-  final int timestamp;
+  final int timestampMs;
   final double value;
 
-  const _TrendPoint({required this.timestamp, required this.value});
+  const _TrendPoint({required this.timestampMs, required this.value});
 }
 
 class DeviceMonitorPage extends StatefulWidget {
@@ -37,6 +39,7 @@ class _DeviceMonitorPageState extends State<DeviceMonitorPage> {
   DeviceLatestSnapshot? _latest;
   List<DeviceHistoryPoint> _history = [];
   _TrendMetric _selectedTrendMetric = _TrendMetric.heartRate;
+  _DebounceBucket _selectedDebounceBucket = _DebounceBucket.twoSeconds;
 
   @override
   void initState() {
@@ -435,6 +438,8 @@ class _DeviceMonitorPageState extends State<DeviceMonitorPage> {
           ),
           const SizedBox(height: 12),
           _buildTrendMetricSelector(),
+          const SizedBox(height: 10),
+          _buildDebounceSelector(),
         ],
       ),
     );
@@ -442,18 +447,99 @@ class _DeviceMonitorPageState extends State<DeviceMonitorPage> {
 
   List<_TrendPoint> _trendPoints(_TrendMetric metric) {
     final sortedHistory = _history.toList()
-      ..sort((left, right) => left.timestamp.compareTo(right.timestamp));
+      ..sort((left, right) {
+        final timestampCompare = left.timestamp.compareTo(right.timestamp);
+        if (timestampCompare != 0) return timestampCompare;
 
-    return sortedHistory
+        final receivedAtCompare =
+            (left.serverReceivedAt ?? 0).compareTo(right.serverReceivedAt ?? 0);
+        if (receivedAtCompare != 0) return receivedAtCompare;
+
+        return (left.seq ?? 0).compareTo(right.seq ?? 0);
+      });
+
+    final rawPoints = sortedHistory
         .map((point) {
           final value = _trendMetricValue(point, metric);
           if (value == null) return null;
-          // Convert timestamp from milliseconds to seconds
-          final timestampInSeconds = point.timestamp ~/ 1000;
-          return _TrendPoint(timestamp: timestampInSeconds, value: value);
+          return _TrendPoint(timestampMs: point.timestamp, value: value);
         })
         .whereType<_TrendPoint>()
         .toList();
+
+    return _debouncePointsByBucket(
+      rawPoints,
+      _debounceBucketSeconds(_selectedDebounceBucket),
+    );
+  }
+
+  List<_TrendPoint> _debouncePointsByBucket(
+    List<_TrendPoint> points,
+    int bucketSeconds,
+  ) {
+    if (points.isEmpty) return points;
+    final bucketMs = bucketSeconds * 1000;
+
+    final Map<int, List<_TrendPoint>> grouped = {};
+    for (final point in points) {
+      final bucketKey = point.timestampMs ~/ bucketMs;
+      grouped.putIfAbsent(bucketKey, () => <_TrendPoint>[]).add(point);
+    }
+
+    final result = <_TrendPoint>[];
+    for (final bucketPoints in grouped.values) {
+      result.add(_medianRepresentativePoint(bucketPoints));
+    }
+
+    result.sort((left, right) => left.timestampMs.compareTo(right.timestampMs));
+    return result;
+  }
+
+  _TrendPoint _medianRepresentativePoint(List<_TrendPoint> points) {
+    if (points.length == 1) return points.first;
+
+    final values = points.map((point) => point.value).toList()..sort();
+    final mid = values.length ~/ 2;
+    final medianValue =
+        values.length.isOdd ? values[mid] : (values[mid - 1] + values[mid]) / 2;
+
+    _TrendPoint best = points.first;
+    double bestDistance = (best.value - medianValue).abs();
+
+    for (final point in points.skip(1)) {
+      final distance = (point.value - medianValue).abs();
+      if (distance < bestDistance) {
+        best = point;
+        bestDistance = distance;
+      } else if (distance == bestDistance &&
+          point.timestampMs > best.timestampMs) {
+        best = point;
+      }
+    }
+
+    return best;
+  }
+
+  int _debounceBucketSeconds(_DebounceBucket bucket) {
+    switch (bucket) {
+      case _DebounceBucket.oneSecond:
+        return 1;
+      case _DebounceBucket.twoSeconds:
+        return 2;
+      case _DebounceBucket.fiveSeconds:
+        return 5;
+    }
+  }
+
+  String _debounceBucketLabel(_DebounceBucket bucket) {
+    switch (bucket) {
+      case _DebounceBucket.oneSecond:
+        return '1秒';
+      case _DebounceBucket.twoSeconds:
+        return '2秒';
+      case _DebounceBucket.fiveSeconds:
+        return '5秒';
+    }
   }
 
   double? _trendMetricValue(DeviceHistoryPoint point, _TrendMetric metric) {
@@ -525,21 +611,20 @@ class _DeviceMonitorPageState extends State<DeviceMonitorPage> {
     _TrendMetric metric,
     int selectedWindowSeconds,
   ) {
-    final now = DateTime.now();
-    final currentTimestamp = now.millisecondsSinceEpoch ~/ 1000;
+    final currentTimestampMs = DateTime.now().millisecondsSinceEpoch;
 
-    // Calculate the rightmost timestamp as current time
-    final rightTimestamp = currentTimestamp;
+    final rightTimestamp = currentTimestampMs;
 
-    // Calculate the leftmost timestamp based on the selected window
-    final leftTimestamp = rightTimestamp - selectedWindowSeconds;
+    final leftTimestamp = rightTimestamp - selectedWindowSeconds * 1000;
 
-    // Filter points within the time range
     final filteredPoints = points
         .where((point) =>
-            point.timestamp >= leftTimestamp &&
-            point.timestamp <= rightTimestamp)
+            point.timestampMs >= leftTimestamp &&
+            point.timestampMs <= rightTimestamp)
         .toList();
+
+    filteredPoints
+        .sort((left, right) => left.timestampMs.compareTo(right.timestampMs));
 
     if (filteredPoints.isEmpty) {
       return LineChartData(
@@ -560,8 +645,8 @@ class _DeviceMonitorPageState extends State<DeviceMonitorPage> {
     final yStep = _axisStep(minY, maxY, metric);
 
     return LineChartData(
-      minX: leftTimestamp.toDouble(),
-      maxX: rightTimestamp.toDouble(),
+      minX: 0,
+      maxX: selectedWindowSeconds.toDouble(),
       minY: minY,
       maxY: maxY,
       gridData: FlGridData(
@@ -625,13 +710,14 @@ class _DeviceMonitorPageState extends State<DeviceMonitorPage> {
             reservedSize: 26,
             interval: xStep,
             getTitlesWidget: (value, meta) {
-              if (value < leftTimestamp || value > rightTimestamp) {
+              if (value < 0 || value > selectedWindowSeconds) {
                 return const SizedBox.shrink();
               }
+              final displayTimestampMs = leftTimestamp + (value * 1000).round();
               return Padding(
                 padding: const EdgeInsets.only(top: 4),
                 child: Text(
-                  _formatTrendTime(value.toInt()),
+                  _formatTrendTime(displayTimestampMs),
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.7),
                     fontSize: 10,
@@ -642,38 +728,53 @@ class _DeviceMonitorPageState extends State<DeviceMonitorPage> {
           ),
         ),
       ),
-      lineBarsData: [
+      lineBarsData: _buildTrendLineBars(filteredPoints, leftTimestamp, color),
+    );
+  }
+
+  List<LineChartBarData> _buildTrendLineBars(
+    List<_TrendPoint> points,
+    int leftTimestampMs,
+    Color color,
+  ) {
+    if (points.length < 2) {
+      return [
         LineChartBarData(
           spots: [
-            for (final point in filteredPoints)
-              FlSpot(point.timestamp.toDouble(), point.value),
+            for (final point in points)
+              FlSpot(
+                  (point.timestampMs - leftTimestampMs) / 1000.0, point.value),
           ],
-          isCurved: true,
+          isCurved: false,
           barWidth: 1.5,
           color: color,
-          dotData: FlDotData(
-            show: true,
-            getDotPainter: (_, __, ___, ____) => FlDotCirclePainter(
-              radius: 1.5,
-              color: color,
-              strokeWidth: 0,
-            ),
-          ),
-          belowBarData: BarAreaData(
-            show: true,
-            color: color.withOpacity(0.18),
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                color.withOpacity(0.32),
-                color.withOpacity(0.02),
-              ],
-            ),
-          ),
+          dotData: FlDotData(show: true),
+          belowBarData: BarAreaData(show: false),
         ),
-      ],
-    );
+      ];
+    }
+
+    final bars = <LineChartBarData>[];
+    for (var index = 0; index < points.length - 1; index++) {
+      final current = points[index];
+      final next = points[index + 1];
+      bars.add(
+        LineChartBarData(
+          spots: [
+            FlSpot((current.timestampMs - leftTimestampMs) / 1000.0,
+                current.value),
+            FlSpot((next.timestampMs - leftTimestampMs) / 1000.0, next.value),
+          ],
+          isCurved: false,
+          barWidth: 1.5,
+          color: color,
+          dotData: FlDotData(show: false),
+          belowBarData: BarAreaData(show: false),
+        ),
+      );
+    }
+
+    return bars;
   }
 
   double _axisStep(double minY, double maxY, _TrendMetric metric) {
@@ -716,8 +817,7 @@ class _DeviceMonitorPageState extends State<DeviceMonitorPage> {
   }
 
   String _formatTrendTime(int timestamp) {
-    // timestamp is in seconds, convert to milliseconds for DateTime
-    final date = DateTime.fromMillisecondsSinceEpoch(timestamp * 1000);
+    final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
     String pad(int value) => value.toString().padLeft(2, '0');
     return '${pad(date.hour)}:${pad(date.minute)}';
   }
@@ -753,6 +853,48 @@ class _DeviceMonitorPageState extends State<DeviceMonitorPage> {
                   style: TextStyle(
                     color: selected ? Colors.white : Colors.black87,
                     fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildDebounceSelector() {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        children: _DebounceBucket.values.map((bucket) {
+          final selected = bucket == _selectedDebounceBucket;
+          return Expanded(
+            child: GestureDetector(
+              onTap: () {
+                setState(() {
+                  _selectedDebounceBucket = bucket;
+                });
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color:
+                      selected ? const Color(0xff2d7ff9) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  _debounceBucketLabel(bucket),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                    fontSize: 13,
                   ),
                 ),
               ),

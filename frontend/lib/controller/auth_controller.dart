@@ -3,8 +3,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../api/api_service.dart';
 import '../api/ws_service.dart';
 import 'package:flutter/material.dart';
-import '../pages/login_page.dart';
-import '../pages/home_page.dart';
+import '../pages/user/login_page.dart';
+import '../pages/home/home_page.dart';
 import 'data_controller.dart';
 
 // 使用 GetX 状态管理框架，负责用户登录状态和业务逻辑。
