@@ -928,9 +928,10 @@ class _SportPageState extends State<SportPage> {
                                             : '${item.calorie!.toStringAsFixed(1)}千卡',
                                         style: const TextStyle(
                                           color: AppColors.primaryDark,
-                                          fontSize: 30,
-                                          fontWeight: FontWeight.w800,
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w500,
                                         ),
+                                        textAlign: TextAlign.center,
                                       ),
                                     ),
                                   ),
