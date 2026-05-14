@@ -93,7 +93,7 @@ class ApiService {
 
           if (isBackendDown) {
             UserNotice.showBackendUnavailable(message: message);
-          } else {
+          } else if (statusCode != 401) {
             UserNotice.showInfoOnce(title: '提示', message: message);
           }
           handler.next(e);
