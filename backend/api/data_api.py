@@ -1,6 +1,7 @@
 # 数据上传/查询接口
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
+from typing import Literal
 from service.data_service import (
     upload_physio_data_service,
     get_physio_data_service,
@@ -8,8 +9,7 @@ from service.data_service import (
     get_sleep_record_service,
     upload_sport_record_service,
     get_sport_record_service,
-    get_sport_calendar_service,
-    get_sport_week_service,
+    get_sport_summary_service,
 )
 from repository.iot_repo import get_latest_device_event, get_recent_iot_raw_events
 
@@ -166,23 +166,21 @@ async def query_sport_record(
     }
 
 
-@router.get("/query/sport/calendar")
-async def query_sport_calendar(
-    user_id: int,
-    year: int = Query(..., ge=2000, le=2100),
-    month: int = Query(..., ge=1, le=12),
+@router.get("/query/sport/summary")
+async def query_sport_summary(
+    user_id: int = Query(...),
+    granularity: Literal["day", "week", "month"] = Query("week"),
+    date: str | None = Query(default=None, description="YYYY-MM-DD"),
+    year: int | None = Query(default=None, ge=2000, le=2100),
+    month: int | None = Query(default=None, ge=1, le=12),
 ):
-    result = get_sport_calendar_service(user_id=user_id, year=year, month=month)
-    return {
-        "code": 200,
-        "msg": "查询成功",
-        "data": result["data"],
-    }
-
-
-@router.get("/query/sport/week")
-async def query_sport_week(user_id: int = Query(...)):
-    result = get_sport_week_service(user_id=user_id)
+    result = get_sport_summary_service(
+        user_id=user_id,
+        granularity=granularity,
+        date=date,
+        year=year,
+        month=month,
+    )
     return {
         "code": 200,
         "msg": "查询成功",

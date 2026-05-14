@@ -299,33 +299,37 @@ class ApiService {
     }
   }
 
-  // 查询运动月历 /data/query/sport/calendar
-  Future<Map<String, dynamic>> querySportCalendar(
-      int userId, int year, int month) async {
+  // 查询运动汇总 /data/query/sport/summary
+  Future<Map<String, dynamic>> querySportSummary(
+    int userId, {
+    String granularity = 'week',
+    String? date,
+    int? year,
+    int? month,
+  }) async {
     try {
-      debugPrint("调用查询运动月历接口，userId: $userId, year: $year, month: $month");
+      debugPrint(
+          "调用查询运动汇总接口，userId: $userId, granularity: $granularity, date: $date, year: $year, month: $month");
+      final queryParameters = <String, dynamic>{
+        "user_id": userId,
+        "granularity": granularity,
+      };
+      if (date != null && date.isNotEmpty) {
+        queryParameters["date"] = date;
+      }
+      if (year != null) {
+        queryParameters["year"] = year;
+      }
+      if (month != null) {
+        queryParameters["month"] = month;
+      }
       final response = await _dio.get(
-        "/data/query/sport/calendar",
-        queryParameters: {"user_id": userId, "year": year, "month": month},
+        "/data/query/sport/summary",
+        queryParameters: queryParameters,
       );
       return response.data;
     } on DioException catch (e) {
-      debugPrint("查询运动月历失败: ${e.message}");
-      return {"code": -1, "msg": _friendlyRequestMessage(e)};
-    }
-  }
-
-  // 查询周运动数据 /data/query/sport/week
-  Future<Map<String, dynamic>> querySportWeek(int userId) async {
-    try {
-      debugPrint("调用查询周运动接口，userId: $userId");
-      final response = await _dio.get(
-        "/data/query/sport/week",
-        queryParameters: {"user_id": userId},
-      );
-      return response.data;
-    } on DioException catch (e) {
-      debugPrint("查询周运动数据失败: ${e.message}");
+      debugPrint("查询运动汇总失败: ${e.message}");
       return {"code": -1, "msg": _friendlyRequestMessage(e)};
     }
   }

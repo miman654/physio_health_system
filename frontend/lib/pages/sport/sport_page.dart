@@ -51,25 +51,28 @@ class _SportPageState extends State<SportPage> {
   bool _isWorkoutRunning = false;
   DateTime? _workoutStart;
   _ChartAxisMode _chartAxisMode = _ChartAxisMode.weekday;
-  List<_WeekDayCalorie> _weekData = [];
+  Map<String, dynamic> _sportSummaryData = {};
+  double? _hoverChartDx;
 
   @override
   void initState() {
     super.initState();
     _fetchSportRecords();
-    _fetchWeekData();
+    _fetchChartSummary();
   }
 
-  Future<void> _fetchWeekData() async {
-    final userId = _authController.userId.value;
-    if (userId <= 0) return;
-    final result = await _apiService.querySportWeek(userId);
-    if (result['code'] == 200 && result['data'] is List) {
-      final data = (result['data'] as List)
-          .map((e) => _WeekDayCalorie.fromJson(Map<String, dynamic>.from(e)))
-          .toList();
+  Future<void> _fetchChartSummary() async {
+    final granularity =
+        _chartAxisMode == _ChartAxisMode.weekday ? 'week' : 'day';
+    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final result = await _dataController.querySportSummary(
+      granularity: granularity,
+      date: today,
+    );
+    if (!mounted) return;
+    if (result != null && result['code'] == 200 && result['data'] is Map) {
       setState(() {
-        _weekData = data;
+        _sportSummaryData = Map<String, dynamic>.from(result['data'] as Map);
       });
     }
   }
@@ -83,7 +86,7 @@ class _SportPageState extends State<SportPage> {
     setState(() {
       _loading = false;
     });
-    await _fetchWeekData();
+    await _fetchChartSummary();
   }
 
   Future<void> _toggleWorkout() async {
@@ -193,26 +196,20 @@ class _SportPageState extends State<SportPage> {
           ? _ChartAxisMode.time
           : _ChartAxisMode.weekday;
     });
+    _fetchChartSummary();
   }
 
   List<_CaloriePoint> _buildChartPoints() {
-    final raw = _dataController.sportDataList.cast<dynamic>().toList();
-    final records =
-        raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
-
-    records.sort((a, b) {
-      final ta = _parseTime(a['sport_start']?.toString()) ?? DateTime(1970);
-      final tb = _parseTime(b['sport_start']?.toString()) ?? DateTime(1970);
-      return ta.compareTo(tb);
-    });
-
-    final last =
-        records.length > 7 ? records.sublist(records.length - 7) : records;
-
     final points = <_CaloriePoint>[];
-    for (final item in last) {
-      final time =
-          _parseTime(item['sport_start']?.toString()) ?? DateTime.now();
+    final chart = Map<String, dynamic>.from(
+      _sportSummaryData['chart'] as Map? ?? const {},
+    );
+    final rawPoints = List<Map<String, dynamic>>.from(
+      chart['points'] ?? const [],
+    );
+
+    for (final item in rawPoints) {
+      final time = _parseTime(item['time']?.toString()) ?? DateTime.now();
       final calories = _asDouble(item['calorie']) ?? 0;
       points.add(
         _CaloriePoint(
@@ -221,21 +218,6 @@ class _SportPageState extends State<SportPage> {
           isToday: _isSameDay(time, DateTime.now()),
         ),
       );
-    }
-
-    if (points.isEmpty) {
-      final now = DateTime.now();
-      final labels = <String>['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-      for (var i = 0; i < labels.length; i++) {
-        points.add(
-          _CaloriePoint(
-            time: DateTime(now.year, now.month, now.day)
-                .subtract(Duration(days: now.weekday - 1 - i)),
-            calories: 0,
-            isToday: i == now.weekday - 1,
-          ),
-        );
-      }
     }
 
     return points;
@@ -385,8 +367,6 @@ class _SportPageState extends State<SportPage> {
   }
 
   Widget _buildChartCard(List<_CaloriePoint> points) {
-    final weekdayLabels = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 18),
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
@@ -435,7 +415,12 @@ class _SportPageState extends State<SportPage> {
   }
 
   Widget _buildWeekBarChart() {
-    if (_weekData.isEmpty) {
+    final chart = Map<String, dynamic>.from(
+      _sportSummaryData['chart'] as Map? ?? const {},
+    );
+    final days = List<Map<String, dynamic>>.from(chart['days'] ?? const []);
+
+    if (days.isEmpty) {
       return const Center(
         child: Text(
           '暂无周数据',
@@ -444,7 +429,8 @@ class _SportPageState extends State<SportPage> {
       );
     }
 
-    final maxCalorie = _weekData.map((e) => e.calorie).reduce(math.max);
+    final calories = days.map((day) => _asDouble(day['calorie']) ?? 0).toList();
+    final maxCalorie = calories.reduce(math.max);
     final maxY = maxCalorie > 0 ? maxCalorie * 1.2 : 100.0;
 
     return BarChart(
@@ -494,7 +480,10 @@ class _SportPageState extends State<SportPage> {
               reservedSize: 46,
               getTitlesWidget: (value, meta) {
                 final index = value.toInt();
-                if (index < 0 || index >= _weekData.length) {
+                final days = List<Map<String, dynamic>>.from(
+                  chart['days'] ?? const [],
+                );
+                if (index < 0 || index >= days.length) {
                   return const SizedBox.shrink();
                 }
                 final weekdayLabels = [
@@ -509,7 +498,9 @@ class _SportPageState extends State<SportPage> {
                 return Padding(
                   padding: const EdgeInsets.only(top: 2),
                   child: Text(
-                    weekdayLabels[index],
+                    (days[index]['weekday']?.toString().isNotEmpty == true)
+                        ? days[index]['weekday'].toString()
+                        : weekdayLabels[index],
                     style: const TextStyle(
                       color: AppColors.textBody,
                       fontSize: 22,
@@ -533,19 +524,20 @@ class _SportPageState extends State<SportPage> {
           },
         ),
         borderData: FlBorderData(show: false),
-        barGroups: _weekData.asMap().entries.map((entry) {
+        barGroups: days.asMap().entries.map((entry) {
+          final item = entry.value;
+          final calorie = _asDouble(item['calorie']) ?? 0;
           return BarChartGroupData(
             x: entry.key,
             barRods: [
               BarChartRodData(
-                toY: entry.value.calorie,
+                toY: calorie,
                 color: AppColors.primary,
                 width: 24, // Increased from 16 to 24
                 borderRadius: const BorderRadius.vertical(
                     top: Radius.circular(8)), // Increased from 4 to 8
                 rodStackItems: [
-                  BarChartRodStackItem(
-                      0, entry.value.calorie, AppColors.primary),
+                  BarChartRodStackItem(0, calorie, AppColors.primary),
                 ],
               ),
             ],
@@ -562,14 +554,29 @@ class _SportPageState extends State<SportPage> {
     final minValue =
         calorieValues.isEmpty ? 0.0 : calorieValues.reduce(math.min);
 
-    return CustomPaint(
-      painter: _CalorieCurvePainter(
-        points: points,
-        axisMode: _chartAxisMode,
-        minValue: minValue,
-        maxValue: maxValue,
+    return MouseRegion(
+      onHover: (event) {
+        setState(() {
+          _hoverChartDx = event.localPosition.dx;
+        });
+      },
+      onExit: (_) {
+        if (_hoverChartDx != null) {
+          setState(() {
+            _hoverChartDx = null;
+          });
+        }
+      },
+      child: CustomPaint(
+        painter: _CalorieCurvePainter(
+          points: points,
+          axisMode: _chartAxisMode,
+          minValue: minValue,
+          maxValue: maxValue,
+          hoverDx: _hoverChartDx,
+        ),
+        child: Container(),
       ),
-      child: Container(),
     );
   }
 
@@ -1059,23 +1066,6 @@ class _CaloriePoint {
   final bool isToday;
 }
 
-class _WeekDayCalorie {
-  _WeekDayCalorie({
-    required this.weekday,
-    required this.calorie,
-  });
-
-  final String weekday;
-  final double calorie;
-
-  factory _WeekDayCalorie.fromJson(Map<String, dynamic> json) {
-    return _WeekDayCalorie(
-      weekday: json['weekday']?.toString() ?? '',
-      calorie: (json['calorie'] as num?)?.toDouble() ?? 0.0,
-    );
-  }
-}
-
 class _SportRecordEntry {
   _SportRecordEntry({
     required this.sportType,
@@ -1118,12 +1108,14 @@ class _CalorieCurvePainter extends CustomPainter {
     required this.axisMode,
     required this.minValue,
     required this.maxValue,
+    required this.hoverDx,
   });
 
   final List<_CaloriePoint> points;
   final _ChartAxisMode axisMode;
   final double minValue;
   final double maxValue;
+  final double? hoverDx;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1142,8 +1134,14 @@ class _CalorieCurvePainter extends CustomPainter {
         : (maxCalorie - minCalorie);
 
     final sorted = [...points]..sort((a, b) => a.time.compareTo(b.time));
-    final minTime = sorted.first.time;
-    final maxTime = sorted.last.time;
+    final rawMinTime = sorted.first.time;
+    final rawMaxTime = sorted.last.time;
+    final minTime = axisMode == _ChartAxisMode.time
+        ? rawMinTime.subtract(const Duration(minutes: 30))
+        : rawMinTime;
+    final maxTime = axisMode == _ChartAxisMode.time
+        ? rawMaxTime.add(const Duration(minutes: 30))
+        : rawMaxTime;
     final timeSpan = math.max(1, maxTime.difference(minTime).inSeconds);
 
     final axisPaint = Paint()
@@ -1223,11 +1221,12 @@ class _CalorieCurvePainter extends CustomPainter {
 
     final strokePaint = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.6
+      ..strokeWidth = 1.8
       ..color = AppColors.primaryDark
       ..isAntiAlias = true;
     canvas.drawPath(path, strokePaint);
 
+    final markerRadius = axisMode == _ChartAxisMode.time ? 3.0 : 4.2;
     for (final marker in pointPositions) {
       canvas.drawLine(
         Offset(marker.dx, plotBottom),
@@ -1238,7 +1237,7 @@ class _CalorieCurvePainter extends CustomPainter {
       );
       canvas.drawCircle(
         marker,
-        4.2,
+        markerRadius,
         Paint()..color = AppColors.primary,
       );
     }
@@ -1261,6 +1260,90 @@ class _CalorieCurvePainter extends CustomPainter {
         9,
         Paint()..color = AppColors.primaryDark.withValues(alpha: 0.3),
       );
+    }
+
+    if (axisMode == _ChartAxisMode.time &&
+        hoverDx != null &&
+        pointPositions.isNotEmpty) {
+      var nearestIndex = 0;
+      var minDistance = (pointPositions[0].dx - hoverDx!).abs();
+      for (var i = 1; i < pointPositions.length; i++) {
+        final distance = (pointPositions[i].dx - hoverDx!).abs();
+        if (distance < minDistance) {
+          minDistance = distance;
+          nearestIndex = i;
+        }
+      }
+
+      final marker = pointPositions[nearestIndex];
+      final hoverPoint = sorted[nearestIndex];
+
+      final dashPaint = Paint()
+        ..color = AppColors.primary
+        ..strokeWidth = 1.2;
+      const dashLength = 5.0;
+      const dashGap = 4.0;
+      var startY = plotTop;
+      while (startY < plotBottom) {
+        final endY = math.min(startY + dashLength, plotBottom);
+        canvas.drawLine(
+          Offset(marker.dx, startY),
+          Offset(marker.dx, endY),
+          dashPaint,
+        );
+        startY += dashLength + dashGap;
+      }
+
+      canvas.drawCircle(
+        marker,
+        5,
+        Paint()..color = AppColors.primary,
+      );
+      canvas.drawCircle(
+        marker,
+        9,
+        Paint()..color = AppColors.primary.withValues(alpha: 0.25),
+      );
+
+      final valueText = '${hoverPoint.calories.toStringAsFixed(1)}千卡';
+      final valuePainter = TextPainter(
+        text: TextSpan(
+          text: valueText,
+          style: const TextStyle(
+            color: AppColors.primaryDark,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        textDirection: ui.TextDirection.ltr,
+      )..layout();
+
+      const paddingX = 8.0;
+      const paddingY = 4.0;
+      final bubbleWidth = valuePainter.width + paddingX * 2;
+      final bubbleHeight = valuePainter.height + paddingY * 2;
+      final bubbleLeft = (marker.dx - bubbleWidth / 2)
+          .clamp(plotLeft, size.width - bubbleWidth)
+          .toDouble();
+      final bubbleTop = math.max(0, plotTop - bubbleHeight - 6).toDouble();
+      final bubbleRect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(bubbleLeft, bubbleTop, bubbleWidth, bubbleHeight),
+        const Radius.circular(8),
+      );
+
+      canvas.drawRRect(
+        bubbleRect,
+        Paint()..color = AppColors.primaryLight,
+      );
+      canvas.drawRRect(
+        bubbleRect,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1
+          ..color = AppColors.primary,
+      );
+      valuePainter.paint(
+          canvas, Offset(bubbleLeft + paddingX, bubbleTop + paddingY));
     }
 
     final labelMap = <int, String>{
@@ -1316,6 +1399,7 @@ class _CalorieCurvePainter extends CustomPainter {
     return oldDelegate.points != points ||
         oldDelegate.axisMode != axisMode ||
         oldDelegate.minValue != minValue ||
-        oldDelegate.maxValue != maxValue;
+        oldDelegate.maxValue != maxValue ||
+        oldDelegate.hoverDx != hoverDx;
   }
 }

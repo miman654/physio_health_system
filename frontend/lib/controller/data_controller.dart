@@ -17,6 +17,7 @@ class DataController extends GetxController {
   // 运动记录
   RxList sportDataList = [].obs;
   RxMap sportCalendarData = {}.obs;
+  RxMap sportSummaryData = {}.obs;
   // AI分析结果（适配接口的数组/对象返回）
   RxMap aiPhysioAnalysis = {}.obs; // AI生理分析完整数据
   RxList aiPhysioSuggestions = [].obs; // AI生理分析建议数组
@@ -333,9 +334,11 @@ class DataController extends GetxController {
     }
   }
 
-  Future<Map<String, dynamic>?> querySportCalendar({
-    required int year,
-    required int month,
+  Future<Map<String, dynamic>?> querySportSummary({
+    String granularity = 'week',
+    String? date,
+    int? year,
+    int? month,
   }) async {
     int userId = await _getCurrentUserId();
     if (userId == 0) {
@@ -345,15 +348,21 @@ class DataController extends GetxController {
     }
 
     isLoading.value = true;
-    var result = await _apiService.querySportCalendar(userId, year, month);
+    var result = await _apiService.querySportSummary(
+      userId,
+      granularity: granularity,
+      date: date,
+      year: year,
+      month: month,
+    );
     isLoading.value = false;
 
     if (result["code"] == 200) {
-      sportCalendarData.value = result["data"] ?? {};
+      sportSummaryData.value = result["data"] ?? {};
       return result;
     }
 
-    sportCalendarData.clear();
+    sportSummaryData.clear();
     return result;
   }
 

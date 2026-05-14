@@ -36,7 +36,8 @@ class _SportCalendarPageState extends State<SportCalendarPage> {
       _loading = true;
     });
 
-    final result = await _dataController.querySportCalendar(
+    final result = await _dataController.querySportSummary(
+      granularity: 'month',
       year: _focusedMonth.year,
       month: _focusedMonth.month,
     );
@@ -57,8 +58,9 @@ class _SportCalendarPageState extends State<SportCalendarPage> {
   }
 
   String? _firstWorkoutDateKey() {
-    final days =
-        List<Map<String, dynamic>>.from(_calendarData['days'] ?? const []);
+    final days = List<Map<String, dynamic>>.from(
+      (_calendarData['calendar'] as Map?)?['days'] ?? const [],
+    );
     for (final day in days) {
       if (day['has_workout'] == true) {
         final date = day['date']?.toString();
@@ -89,8 +91,9 @@ class _SportCalendarPageState extends State<SportCalendarPage> {
   }
 
   Map<String, Map<String, dynamic>> _dayMap() {
-    final days =
-        List<Map<String, dynamic>>.from(_calendarData['days'] ?? const []);
+    final days = List<Map<String, dynamic>>.from(
+      (_calendarData['calendar'] as Map?)?['days'] ?? const [],
+    );
     return {
       for (final day in days)
         day['date']?.toString() ?? '': Map<String, dynamic>.from(day),
@@ -192,7 +195,7 @@ class _SportCalendarPageState extends State<SportCalendarPage> {
   }
 
   double _monthMaxCalorie() {
-    final value = _calendarData['month_max_calorie'];
+    final value = (_calendarData['summary'] as Map?)?['month_max_calorie'];
     if (value is num) return value.toDouble();
     return 0;
   }
@@ -268,10 +271,10 @@ class _SportCalendarPageState extends State<SportCalendarPage> {
   }
 
   Widget _buildSummaryCard() {
-    final totalCount =
-        (_calendarData['month_total_count'] as num?)?.toInt() ?? 0;
+    final summary = _calendarData['summary'] as Map? ?? const {};
+    final totalCount = (summary['month_total_count'] as num?)?.toInt() ?? 0;
     final totalCalorie =
-        (_calendarData['month_total_calorie'] as num?)?.toDouble() ?? 0;
+        (summary['month_total_calorie'] as num?)?.toDouble() ?? 0;
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 14),

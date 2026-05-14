@@ -1,4 +1,7 @@
 # 数据处理业务
+from calendar import monthrange
+from datetime import datetime, timedelta
+
 from repository.physio_repo import (
     insert_physio_data,
     get_physio_data_by_user,
@@ -6,13 +9,218 @@ from repository.physio_repo import (
     get_sleep_record_by_user,
     insert_sport_record,
     get_sport_record_by_user,
-    get_sport_calendar_by_user,
+    get_sport_records_by_user_in_range,
 )
 from repository.iot_repo import get_averaged_metrics_in_time_range
 from repository.user_repo import get_user_by_id
 from utils.sport_calculator import calculate_calorie
 from utils.ai_util import generate_sport_suggestion_ai
-from calendar import monthrange
+
+
+def _parse_date_only(raw_date: str | None):
+    if not raw_date:
+        return datetime.now().date()
+    return datetime.strptime(raw_date, "%Y-%m-%d").date()
+
+
+def _parse_datetime(raw_time: str | None):
+    if not raw_time:
+        return None
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+        try:
+            return datetime.strptime(raw_time, fmt)
+        except Exception:
+            continue
+    return None
+
+
+def _weekday_cn(date_value):
+    labels = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+    return labels[date_value.weekday()]
+
+
+def get_sport_summary_service(
+    user_id: int,
+    granularity: str,
+    date: str | None = None,
+    year: int | None = None,
+    month: int | None = None,
+):
+    granularity = (granularity or "week").lower()
+
+    if granularity == "day":
+        day = _parse_date_only(date)
+        start_dt = datetime(day.year, day.month, day.day)
+        end_dt = start_dt + timedelta(days=1)
+        records = get_sport_records_by_user_in_range(
+            user_id,
+            start_dt.strftime("%Y-%m-%d %H:%M:%S"),
+            end_dt.strftime("%Y-%m-%d %H:%M:%S"),
+        )
+
+        points = []
+        total_calorie = 0.0
+        for record in records:
+            start_time = _parse_datetime(record.get("sport_start"))
+            calorie = float(record.get("calorie") or 0)
+            total_calorie += calorie
+            points.append(
+                {
+                    "time": record.get("sport_start"),
+                    "timestamp_ms": (
+                        int(start_time.timestamp() * 1000) if start_time else None
+                    ),
+                    "calorie": round(calorie, 1),
+                    "sport_type": record.get("sport_type"),
+                }
+            )
+
+        return {
+            "status": "success",
+            "data": {
+                "granularity": "day",
+                "date": day.strftime("%Y-%m-%d"),
+                "date_label": f"{day.strftime('%Y-%m-%d')} {_weekday_cn(day)}",
+                "summary": {
+                    "workout_count": len(records),
+                    "total_calorie": round(total_calorie, 1),
+                },
+                "chart": {
+                    "mode": "time",
+                    "points": points,
+                },
+            },
+        }
+
+    if granularity == "month":
+        month_year = year or datetime.now().year
+        month_value = month or datetime.now().month
+        days_in_month = monthrange(month_year, month_value)[1]
+        month_start = datetime(month_year, month_value, 1)
+        if month_value == 12:
+            next_month_start = datetime(month_year + 1, 1, 1)
+        else:
+            next_month_start = datetime(month_year, month_value + 1, 1)
+
+        records = get_sport_records_by_user_in_range(
+            user_id,
+            month_start.strftime("%Y-%m-%d %H:%M:%S"),
+            next_month_start.strftime("%Y-%m-%d %H:%M:%S"),
+        )
+
+        day_map = {
+            day: {"workout_count": 0, "total_calorie": 0.0}
+            for day in range(1, days_in_month + 1)
+        }
+        month_total_count = 0
+        month_total_calorie = 0.0
+        month_max_calorie = 0.0
+
+        for record in records:
+            start_time = _parse_datetime(record.get("sport_start"))
+            if not start_time:
+                continue
+            day = start_time.day
+            calorie = float(record.get("calorie") or 0)
+            day_info = day_map[day]
+            day_info["workout_count"] += 1
+            day_info["total_calorie"] += calorie
+            month_total_count += 1
+            month_total_calorie += calorie
+
+        days = []
+        for day in range(1, days_in_month + 1):
+            calorie = day_map[day]["total_calorie"]
+            workout_count = day_map[day]["workout_count"]
+            month_max_calorie = max(month_max_calorie, calorie)
+            days.append(
+                {
+                    "date": f"{month_year:04d}-{month_value:02d}-{day:02d}",
+                    "day": day,
+                    "workout_count": workout_count,
+                    "total_calorie": round(calorie, 1),
+                    "has_workout": workout_count > 0,
+                }
+            )
+
+        return {
+            "status": "success",
+            "data": {
+                "granularity": "month",
+                "year": month_year,
+                "month": month_value,
+                "days_in_month": days_in_month,
+                "summary": {
+                    "month_total_calorie": round(month_total_calorie, 1),
+                    "month_total_count": month_total_count,
+                    "month_max_calorie": round(month_max_calorie, 1),
+                },
+                "calendar": {
+                    "days": days,
+                },
+            },
+        }
+
+    # 默认周视图：从周一到周日
+    base_day = _parse_date_only(date)
+    week_start = base_day - timedelta(days=base_day.weekday())
+    week_end = week_start + timedelta(days=7)
+    records = get_sport_records_by_user_in_range(
+        user_id,
+        datetime(week_start.year, week_start.month, week_start.day).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        ),
+        datetime(week_end.year, week_end.month, week_end.day).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        ),
+    )
+
+    day_map = {i: {"workout_count": 0, "total_calorie": 0.0} for i in range(7)}
+    total_calorie = 0.0
+    total_count = 0
+
+    for record in records:
+        start_time = _parse_datetime(record.get("sport_start"))
+        if not start_time:
+            continue
+        day_index = (start_time.date() - week_start).days
+        if 0 <= day_index <= 6:
+            calorie = float(record.get("calorie") or 0)
+            day_info = day_map[day_index]
+            day_info["workout_count"] += 1
+            day_info["total_calorie"] += calorie
+            total_count += 1
+            total_calorie += calorie
+
+    days = []
+    for index in range(7):
+        day_date = week_start + timedelta(days=index)
+        weekday_label = _weekday_cn(day_date)
+        days.append(
+            {
+                "date": day_date.strftime("%Y-%m-%d"),
+                "weekday": weekday_label,
+                "workout_count": day_map[index]["workout_count"],
+                "calorie": round(day_map[index]["total_calorie"], 1),
+            }
+        )
+
+    return {
+        "status": "success",
+        "data": {
+            "granularity": "week",
+            "week_start": week_start.strftime("%Y-%m-%d"),
+            "week_end": (week_end - timedelta(days=1)).strftime("%Y-%m-%d"),
+            "summary": {
+                "week_total_calorie": round(total_calorie, 1),
+                "week_total_count": total_count,
+            },
+            "chart": {
+                "mode": "weekday",
+                "days": days,
+            },
+        },
+    }
 
 
 # 上传生理数据（新版本）
@@ -176,7 +384,9 @@ def upload_sleep_record_service(
     start_ms = int(start_dt.timestamp() * 1000)
     end_ms = int(end_dt.timestamp() * 1000)
 
-    iot_metrics = get_averaged_metrics_in_time_range(start_ms, end_ms, min_data_points=3)
+    iot_metrics = get_averaged_metrics_in_time_range(
+        start_ms, end_ms, min_data_points=3
+    )
     avg_heart_rate = iot_metrics.get("heart_rate")
     avg_spo2 = iot_metrics.get("spo2")
     avg_temp = iot_metrics.get("temp")
@@ -281,12 +491,15 @@ def upload_sport_record_service(
 
     # 3. 从IoT设备获取真实生理数据
     from datetime import datetime
+
     start_dt = datetime.strptime(sport_start, "%Y-%m-%d %H:%M:%S")
     end_dt = datetime.strptime(sport_end, "%Y-%m-%d %H:%M:%S")
     start_ms = int(start_dt.timestamp() * 1000)
     end_ms = int(end_dt.timestamp() * 1000)
 
-    iot_metrics = get_averaged_metrics_in_time_range(start_ms, end_ms, min_data_points=3)
+    iot_metrics = get_averaged_metrics_in_time_range(
+        start_ms, end_ms, min_data_points=3
+    )
     avg_heart_rate = iot_metrics.get("heart_rate")
     avg_spo2 = iot_metrics.get("spo2")
     avg_temp = iot_metrics.get("temp")
@@ -334,85 +547,3 @@ def upload_sport_record_service(
 def get_sport_record_service(user_id: int, limit: int = 7):
     data = get_sport_record_by_user(user_id, limit)
     return {"status": "success", "data": data}
-
-
-def get_sport_week_service(user_id: int):
-    from repository.physio_repo import get_sport_record_by_user
-    records = get_sport_record_by_user(user_id, limit=100)
-
-    from datetime import datetime, timedelta
-    today = datetime.now()
-    week_start = today - timedelta(days=today.weekday() - 1)
-    week_start = datetime(week_start.year, week_start.month, week_start.day)
-
-    daily_calories = {i: 0.0 for i in range(7)}
-
-    for record in records:
-        sport_start_str = record.get("sport_start")
-        if not sport_start_str:
-            continue
-        try:
-            sport_start = datetime.strptime(sport_start_str, "%Y-%m-%d %H:%M:%S")
-            if sport_start >= week_start and sport_start < week_start + timedelta(days=7):
-                day_index = sport_start.weekday() - 1
-                if day_index < 0:
-                    day_index = 6
-                calorie = record.get("calorie") or 0
-                daily_calories[day_index] += float(calorie)
-        except (ValueError, TypeError):
-            continue
-
-    weekdays = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
-    data = [
-        {"weekday": weekdays[i], "calorie": round(daily_calories[i], 1)}
-        for i in range(7)
-    ]
-
-    return {"status": "success", "data": data}
-
-
-def get_sport_calendar_service(user_id: int, year: int, month: int):
-    raw_days = get_sport_calendar_by_user(user_id, year, month)
-    days_in_month = monthrange(year, month)[1]
-
-    day_map = {}
-    for item in raw_days:
-        sport_date = item.get("sport_date")
-        if not sport_date:
-            continue
-        day_map[int(sport_date[-2:])] = item
-
-    days = []
-    month_total_calorie = 0.0
-    month_total_count = 0
-    month_max_calorie = 0.0
-
-    for day in range(1, days_in_month + 1):
-        item = day_map.get(day)
-        calorie = float(item.get("total_calorie", 0)) if item else 0.0
-        workout_count = int(item.get("workout_count", 0)) if item else 0
-        month_total_calorie += calorie
-        month_total_count += workout_count
-        month_max_calorie = max(month_max_calorie, calorie)
-        days.append(
-            {
-                "date": f"{year:04d}-{month:02d}-{day:02d}",
-                "day": day,
-                "workout_count": workout_count,
-                "total_calorie": round(calorie, 1),
-                "has_workout": workout_count > 0,
-            }
-        )
-
-    return {
-        "status": "success",
-        "data": {
-            "year": year,
-            "month": month,
-            "days_in_month": days_in_month,
-            "month_total_calorie": round(month_total_calorie, 1),
-            "month_total_count": month_total_count,
-            "month_max_calorie": round(month_max_calorie, 1),
-            "days": days,
-        },
-    }

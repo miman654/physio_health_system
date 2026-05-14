@@ -142,6 +142,21 @@ def get_sport_record_by_user(user_id: int, limit: int = 7):
     return [dict(item) for item in data]
 
 
+def get_sport_records_by_user_in_range(user_id: int, start_time: str, end_time: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """SELECT id, sport_type, sport_start, sport_end, avg_heart_rate, avg_spo2, avg_temp, calorie, suggestion 
+        FROM sport_record 
+        WHERE user_id = ? AND sport_start >= ? AND sport_start < ?
+        ORDER BY sport_start ASC""",
+        (user_id, start_time, end_time),
+    )
+    data = cursor.fetchall()
+    conn.close()
+    return [dict(item) for item in data]
+
+
 def get_sport_calendar_by_user(user_id: int, year: int, month: int):
     conn = get_db_connection()
     cursor = conn.cursor()
