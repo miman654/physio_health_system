@@ -467,10 +467,50 @@ class _DeviceMonitorPageState extends State<DeviceMonitorPage> {
         .whereType<_TrendPoint>()
         .toList();
 
-    return _debouncePointsByBucket(
+    final debouncedPoints = _debouncePointsByBucket(
       rawPoints,
       _debounceBucketSeconds(_selectedDebounceBucket),
     );
+
+    return _compressConsecutiveNearEqualPoints(
+      debouncedPoints,
+      epsilon: _trendCompressionEpsilon(metric),
+    );
+  }
+
+  List<_TrendPoint> _compressConsecutiveNearEqualPoints(
+    List<_TrendPoint> points, {
+    required double epsilon,
+  }) {
+    if (points.length <= 2) return points;
+
+    final compressed = <_TrendPoint>[points.first];
+    for (var i = 1; i < points.length - 1; i++) {
+      final prev = points[i - 1];
+      final current = points[i];
+      final next = points[i + 1];
+
+      final nearPrev = (current.value - prev.value).abs() <= epsilon;
+      final nearNext = (next.value - current.value).abs() <= epsilon;
+      if (nearPrev && nearNext) {
+        continue;
+      }
+
+      compressed.add(current);
+    }
+    compressed.add(points.last);
+
+    return compressed;
+  }
+
+  double _trendCompressionEpsilon(_TrendMetric metric) {
+    switch (metric) {
+      case _TrendMetric.heartRate:
+        return 0;
+      case _TrendMetric.spo2:
+      case _TrendMetric.temp:
+        return 0.05;
+    }
   }
 
   List<_TrendPoint> _debouncePointsByBucket(
@@ -661,6 +701,25 @@ class _DeviceMonitorPageState extends State<DeviceMonitorPage> {
       borderData: FlBorderData(show: false),
       lineTouchData: LineTouchData(
         enabled: true,
+        touchSpotThreshold: 6,
+        getTouchedSpotIndicator: (barData, spotIndexes) {
+          return spotIndexes
+              .map(
+                (_) => TouchedSpotIndicatorData(
+                  const FlLine(color: Colors.transparent, strokeWidth: 0),
+                  FlDotData(
+                    show: true,
+                    getDotPainter: (spot, percent, bar, index) =>
+                        FlDotCirclePainter(
+                      radius: 1.8,
+                      color: bar.color ?? color,
+                      strokeWidth: 0,
+                    ),
+                  ),
+                ),
+              )
+              .toList();
+        },
         touchTooltipData: LineTouchTooltipData(
           getTooltipItems: (spots) => spots
               .map(
@@ -737,44 +796,47 @@ class _DeviceMonitorPageState extends State<DeviceMonitorPage> {
     int leftTimestampMs,
     Color color,
   ) {
-    if (points.length < 2) {
-      return [
-        LineChartBarData(
-          spots: [
-            for (final point in points)
-              FlSpot(
-                  (point.timestampMs - leftTimestampMs) / 1000.0, point.value),
-          ],
-          isCurved: false,
-          barWidth: 1.5,
-          color: color,
-          dotData: FlDotData(show: true),
-          belowBarData: BarAreaData(show: false),
-        ),
-      ];
-    }
+    if (points.isEmpty) return [];
 
-    final bars = <LineChartBarData>[];
-    for (var index = 0; index < points.length - 1; index++) {
-      final current = points[index];
-      final next = points[index + 1];
-      bars.add(
-        LineChartBarData(
-          spots: [
-            FlSpot((current.timestampMs - leftTimestampMs) / 1000.0,
-                current.value),
-            FlSpot((next.timestampMs - leftTimestampMs) / 1000.0, next.value),
-          ],
-          isCurved: false,
-          barWidth: 1.5,
-          color: color,
-          dotData: FlDotData(show: false),
-          belowBarData: BarAreaData(show: false),
+    // 若相邻点时间间隔超过该阈值，则在该处断开折线（表示中间无有效数据）
+    const int maxGapSeconds = 30;
+    final maxGapMs = maxGapSeconds * 1000;
+
+    final segments = <List<_TrendPoint>>[];
+    List<_TrendPoint> currentSeg = [points.first];
+    for (var i = 1; i < points.length; i++) {
+      final prev = points[i - 1];
+      final cur = points[i];
+      if (cur.timestampMs - prev.timestampMs > maxGapMs) {
+        segments.add(currentSeg);
+        currentSeg = [cur];
+      } else {
+        currentSeg.add(cur);
+      }
+    }
+    if (currentSeg.isNotEmpty) segments.add(currentSeg);
+
+    return segments.map((seg) {
+      return LineChartBarData(
+        spots: [
+          for (final point in seg)
+            FlSpot((point.timestampMs - leftTimestampMs) / 1000.0, point.value),
+        ],
+        isCurved: false,
+        barWidth: 1.5,
+        isStrokeCapRound: false,
+        color: color,
+        dotData: FlDotData(
+          show: true,
+          getDotPainter: (spot, percent, bar, index) => FlDotCirclePainter(
+            radius: 1.2,
+            color: color,
+            strokeWidth: 0,
+          ),
         ),
+        belowBarData: BarAreaData(show: false),
       );
-    }
-
-    return bars;
+    }).toList();
   }
 
   double _axisStep(double minY, double maxY, _TrendMetric metric) {
