@@ -421,16 +421,15 @@ class _SportPageState extends State<SportPage> {
     final days = List<Map<String, dynamic>>.from(chart['days'] ?? const []);
 
     if (days.isEmpty) {
-      return const Center(
-        child: Text(
-          '暂无周数据',
-          style: TextStyle(color: AppColors.textBody),
-        ),
-      );
+      // create 7 placeholder days so the chart still renders axes and labels
+      final weekdayLabels = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+      for (var i = 0; i < 7; i++) {
+        days.add({'weekday': weekdayLabels[i], 'calorie': 0});
+      }
     }
 
     final calories = days.map((day) => _asDouble(day['calorie']) ?? 0).toList();
-    final maxCalorie = calories.reduce(math.max);
+    final maxCalorie = calories.isEmpty ? 0 : calories.reduce(math.max);
     final maxY = maxCalorie > 0 ? maxCalorie * 1.2 : 100.0;
 
     return BarChart(
@@ -1119,8 +1118,6 @@ class _CalorieCurvePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (points.isEmpty) return;
-
     final plotTop = 10.0;
     final plotBottom = size.height - 24;
     final plotLeft = 28.0;
@@ -1133,14 +1130,30 @@ class _CalorieCurvePainter extends CustomPainter {
         ? 1.0
         : (maxCalorie - minCalorie);
 
+    final now = DateTime.now();
+    final todayStart = DateTime(now.year, now.month, now.day);
+
     final sorted = [...points]..sort((a, b) => a.time.compareTo(b.time));
-    final rawMinTime = sorted.first.time;
-    final rawMaxTime = sorted.last.time;
+    DateTime rawMinTime;
+    DateTime rawMaxTime;
+    if (sorted.isEmpty) {
+      // no points: show full day
+      rawMinTime = todayStart;
+      rawMaxTime = todayStart.add(const Duration(days: 1));
+    } else {
+      rawMinTime = sorted.first.time;
+      rawMaxTime = sorted.last.time;
+    }
+
     final minTime = axisMode == _ChartAxisMode.time
-        ? rawMinTime.subtract(const Duration(minutes: 30))
+        ? (sorted.isEmpty
+            ? rawMinTime
+            : rawMinTime.subtract(const Duration(minutes: 30)))
         : rawMinTime;
     final maxTime = axisMode == _ChartAxisMode.time
-        ? rawMaxTime.add(const Duration(minutes: 30))
+        ? (sorted.isEmpty
+            ? rawMaxTime
+            : rawMaxTime.add(const Duration(minutes: 30)))
         : rawMaxTime;
     final timeSpan = math.max(1, maxTime.difference(minTime).inSeconds);
 
@@ -1356,41 +1369,78 @@ class _CalorieCurvePainter extends CustomPainter {
       DateTime.sunday: '星期日',
     };
 
-    for (var i = 0; i < sorted.length; i++) {
-      final point = sorted[i];
-      final x = pointPositions[i].dx;
-      final label = axisMode == _ChartAxisMode.weekday
-          ? (labelMap[point.time.weekday] ?? '星期?')
-          : DateFormat('HH:mm').format(point.time);
-
-      final textPainter = TextPainter(
-        text: TextSpan(
-          text: label,
-          style: const TextStyle(
-            color: AppColors.textBody,
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
+    if (sorted.isEmpty) {
+      // draw fixed time labels for empty day: every 4 hours
+      final intervals = 6; // 0,4,8,12,16,20,24
+      for (var i = 0; i <= intervals; i++) {
+        final t = minTime.add(Duration(hours: i * 4));
+        final secondsFromStart = t.difference(minTime).inSeconds;
+        final x = plotLeft + (secondsFromStart / timeSpan) * plotWidth;
+        final label = DateFormat('HH:mm').format(t);
+        final textPainter = TextPainter(
+          text: TextSpan(
+            text: label,
+            style: const TextStyle(
+              color: AppColors.textBody,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
           ),
-        ),
-        textDirection: ui.TextDirection.ltr,
-        maxLines: 1,
-      )..layout();
+          textDirection: ui.TextDirection.ltr,
+          maxLines: 1,
+        )..layout();
+        final labelWidth = textPainter.width;
+        final labelHeight = textPainter.height;
+        final dx = math.max(
+          plotLeft - 4,
+          math.min(x - labelWidth / 2, size.width - labelWidth),
+        );
+        canvas.save();
+        canvas.translate(dx + labelWidth / 2, plotBottom + 10);
+        canvas.rotate(-0.72);
+        textPainter.paint(
+          canvas,
+          Offset(-labelWidth / 2, -labelHeight / 2),
+        );
+        canvas.restore();
+      }
+    } else {
+      for (var i = 0; i < sorted.length; i++) {
+        final point = sorted[i];
+        final x = pointPositions[i].dx;
+        final label = axisMode == _ChartAxisMode.weekday
+            ? (labelMap[point.time.weekday] ?? '星期?')
+            : DateFormat('HH:mm').format(point.time);
 
-      final labelWidth = textPainter.width;
-      final labelHeight = textPainter.height;
-      final dx = math.max(
-        plotLeft - 4,
-        math.min(x - labelWidth / 2, size.width - labelWidth),
-      );
+        final textPainter = TextPainter(
+          text: TextSpan(
+            text: label,
+            style: const TextStyle(
+              color: AppColors.textBody,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          textDirection: ui.TextDirection.ltr,
+          maxLines: 1,
+        )..layout();
 
-      canvas.save();
-      canvas.translate(dx + labelWidth / 2, plotBottom + 10);
-      canvas.rotate(-0.72);
-      textPainter.paint(
-        canvas,
-        Offset(-labelWidth / 2, -labelHeight / 2),
-      );
-      canvas.restore();
+        final labelWidth = textPainter.width;
+        final labelHeight = textPainter.height;
+        final dx = math.max(
+          plotLeft - 4,
+          math.min(x - labelWidth / 2, size.width - labelWidth),
+        );
+
+        canvas.save();
+        canvas.translate(dx + labelWidth / 2, plotBottom + 10);
+        canvas.rotate(-0.72);
+        textPainter.paint(
+          canvas,
+          Offset(-labelWidth / 2, -labelHeight / 2),
+        );
+        canvas.restore();
+      }
     }
   }
 
