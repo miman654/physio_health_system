@@ -35,7 +35,7 @@ class _DeviceMonitorPageState extends State<DeviceMonitorPage> {
 
   bool _loading = false;
   String? _errorMessage;
-  int _historyWindowSeconds = 600;
+  int _historyWindowSeconds = 300;
   DeviceLatestSnapshot? _latest;
   List<DeviceHistoryPoint> _history = [];
   _TrendMetric _selectedTrendMetric = _TrendMetric.heartRate;
@@ -467,24 +467,131 @@ class _DeviceMonitorPageState extends State<DeviceMonitorPage> {
         .whereType<_TrendPoint>()
         .toList();
 
+    final cleanedPoints = _filterExtremeTrendPoints(rawPoints, metric);
+
     final debouncedPoints = _debouncePointsByBucket(
-      rawPoints,
+      cleanedPoints,
       _debounceBucketSeconds(_selectedDebounceBucket),
     );
 
     return _compressConsecutiveNearEqualPoints(
       debouncedPoints,
       epsilon: _trendCompressionEpsilon(metric),
+      minDensitySeconds:
+          _adaptiveMinDensitySeconds(metric, _historyWindowSeconds),
     );
+  }
+
+  List<_TrendPoint> _filterExtremeTrendPoints(
+    List<_TrendPoint> points,
+    _TrendMetric metric,
+  ) {
+    if (points.length <= 2) return points;
+
+    final lowerBound = _trendLowerBound(metric);
+    final upperBound = _trendUpperBound(metric);
+    final localSpikeThreshold = _trendLocalSpikeThreshold(metric);
+
+    final filtered = <_TrendPoint>[];
+    for (var i = 0; i < points.length; i++) {
+      final current = points[i];
+
+      if (current.value < lowerBound || current.value > upperBound) {
+        continue;
+      }
+
+      if (i > 0 && i < points.length - 1) {
+        final prev = points[i - 1];
+        final next = points[i + 1];
+        final localMedian =
+            _medianOfThree(prev.value, current.value, next.value);
+        final isIsolatedSpike =
+            (current.value - localMedian).abs() > localSpikeThreshold &&
+                (prev.value - next.value).abs() <= localSpikeThreshold;
+
+        if (isIsolatedSpike) {
+          continue;
+        }
+      }
+
+      filtered.add(current);
+    }
+
+    return filtered;
+  }
+
+  double _trendLowerBound(_TrendMetric metric) {
+    switch (metric) {
+      case _TrendMetric.heartRate:
+        return 30;
+      case _TrendMetric.spo2:
+        return 70;
+      case _TrendMetric.temp:
+        return 30;
+    }
+  }
+
+  double _trendUpperBound(_TrendMetric metric) {
+    switch (metric) {
+      case _TrendMetric.heartRate:
+        return 220;
+      case _TrendMetric.spo2:
+        return 100;
+      case _TrendMetric.temp:
+        return 43.5;
+    }
+  }
+
+  double _trendLocalSpikeThreshold(_TrendMetric metric) {
+    switch (metric) {
+      case _TrendMetric.heartRate:
+        return 25;
+      case _TrendMetric.spo2:
+        return 3;
+      case _TrendMetric.temp:
+        return 1.0;
+    }
+  }
+
+  double _medianOfThree(double a, double b, double c) {
+    final values = [a, b, c]..sort();
+    return values[1];
+  }
+
+  int _adaptiveMinDensitySeconds(_TrendMetric metric, int windowSeconds) {
+    // Target number of points on the chart for each metric
+    int targetPoints;
+    switch (metric) {
+      case _TrendMetric.heartRate:
+        targetPoints = 120; // heart rate typically denser; we don't compress it
+        break;
+      case _TrendMetric.spo2:
+        targetPoints = 60;
+        break;
+      case _TrendMetric.temp:
+        targetPoints = 50;
+        break;
+    }
+
+    // Compute seconds per retained point to achieve roughly targetPoints across window
+    final sec = (windowSeconds / (targetPoints > 0 ? targetPoints : 1)).round();
+    return sec.clamp(1, windowSeconds);
   }
 
   List<_TrendPoint> _compressConsecutiveNearEqualPoints(
     List<_TrendPoint> points, {
     required double epsilon,
+    int minDensitySeconds = 0,
   }) {
     if (points.length <= 2) return points;
 
-    final compressed = <_TrendPoint>[points.first];
+    final compressed = <_TrendPoint>[];
+    final minDensityMs = minDensitySeconds * 1000;
+
+    // Always keep first
+    compressed.add(points.first);
+    var lastKeptTs = points.first.timestampMs;
+
     for (var i = 1; i < points.length - 1; i++) {
       final prev = points[i - 1];
       final current = points[i];
@@ -492,12 +599,23 @@ class _DeviceMonitorPageState extends State<DeviceMonitorPage> {
 
       final nearPrev = (current.value - prev.value).abs() <= epsilon;
       final nearNext = (next.value - current.value).abs() <= epsilon;
-      if (nearPrev && nearNext) {
-        continue;
-      }
 
-      compressed.add(current);
+      if (nearPrev && nearNext) {
+        // potential drop: but respect min density
+        if (minDensityMs > 0 &&
+            (current.timestampMs - lastKeptTs) >= minDensityMs) {
+          compressed.add(current);
+          lastKeptTs = current.timestampMs;
+        } else {
+          continue;
+        }
+      } else {
+        compressed.add(current);
+        lastKeptTs = current.timestampMs;
+      }
     }
+
+    // Always keep last
     compressed.add(points.last);
 
     return compressed;
@@ -506,10 +624,22 @@ class _DeviceMonitorPageState extends State<DeviceMonitorPage> {
   double _trendCompressionEpsilon(_TrendMetric metric) {
     switch (metric) {
       case _TrendMetric.heartRate:
+        return 0; // don't compress heart rate
+      case _TrendMetric.spo2:
+        return 0.02; // mild compression for SpO2
+      case _TrendMetric.temp:
+        return 0.01; // keep small temp changes
+    }
+  }
+
+  int _trendCompressionMinDensitySeconds(_TrendMetric metric) {
+    switch (metric) {
+      case _TrendMetric.heartRate:
         return 0;
       case _TrendMetric.spo2:
+        return 4; // ensure at least one SpO2 point every 4s
       case _TrendMetric.temp:
-        return 0.05;
+        return 6; // ensure at least one temp point every 6s
     }
   }
 
@@ -682,7 +812,7 @@ class _DeviceMonitorPageState extends State<DeviceMonitorPage> {
     final minY = minValue - pad;
     final maxY = maxValue + pad;
     final xStep = _trendXAxisIntervalSeconds(selectedWindowSeconds).toDouble();
-    final yStep = _axisStep(minY, maxY, metric);
+    final yStep = _axisStep(minY, maxY, metric, selectedWindowSeconds);
 
     return LineChartData(
       minX: 0,
@@ -839,21 +969,33 @@ class _DeviceMonitorPageState extends State<DeviceMonitorPage> {
     }).toList();
   }
 
-  double _axisStep(double minY, double maxY, _TrendMetric metric) {
+  double _axisStep(
+    double minY,
+    double maxY,
+    _TrendMetric metric,
+    int selectedWindowSeconds,
+  ) {
     final span = (maxY - minY).abs();
     if (span <= 0) return 1;
 
+    final longWindow = selectedWindowSeconds >= 12 * 3600;
+    final veryLongWindow = selectedWindowSeconds >= 24 * 3600;
+
     switch (metric) {
       case _TrendMetric.heartRate:
-        // Heart rate: use larger steps for better readability
+        if (veryLongWindow) return span >= 40 ? 20 : 10;
+        if (longWindow) return span >= 40 ? 20 : 10;
         if (span >= 40) return 10;
         if (span >= 20) return 5;
         return 5;
       case _TrendMetric.spo2:
-        // SpO2: typically small range, use 1 unit steps
+        if (veryLongWindow) return 5;
+        if (longWindow) return 2;
         return 1;
       case _TrendMetric.temp:
-        // Temperature: use 0.5 or 1 unit steps
+        if (veryLongWindow) return 5;
+        if (longWindow) return 2;
+        if (span >= 4) return 2;
         if (span >= 2) return 1;
         return 0.5;
     }
@@ -861,11 +1003,12 @@ class _DeviceMonitorPageState extends State<DeviceMonitorPage> {
 
   int _trendXAxisIntervalSeconds(int selectedWindowSeconds) {
     if (selectedWindowSeconds <= 5 * 60) return 60;
-    if (selectedWindowSeconds <= 30 * 60) return 5 * 60;
-    if (selectedWindowSeconds <= 2 * 3600) return 15 * 60;
+    if (selectedWindowSeconds <= 15 * 60) return 2 * 60;
+    if (selectedWindowSeconds <= 60 * 60) return 10 * 60;
     if (selectedWindowSeconds <= 6 * 3600) return 30 * 60;
     if (selectedWindowSeconds <= 12 * 3600) return 60 * 60;
-    return 2 * 3600;
+    if (selectedWindowSeconds <= 24 * 3600) return 4 * 3600;
+    return 6 * 3600;
   }
 
   String _formatTrendAxisValue(double value, _TrendMetric metric) {
@@ -1130,27 +1273,20 @@ class _DeviceMonitorPageState extends State<DeviceMonitorPage> {
               borderRadius: BorderRadius.circular(20),
             ),
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Expanded(
-                    child: ListView(
-                      children: [
-                        60,
-                        120,
-                        300,
-                        600,
-                        900,
-                        1800,
-                        3600,
-                        7200,
-                        14400,
-                        21600,
-                        43200,
-                        86400,
-                      ].map((seconds) => _historyWindowTile(seconds)).toList(),
-                    ),
+                  ListView(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    children: [
+                      60,
+                      300,
+                      3600,
+                      43200,
+                      86400,
+                    ].map((seconds) => _historyWindowTile(seconds)).toList(),
                   ),
                   Align(
                     alignment: Alignment.centerRight,
@@ -1175,6 +1311,9 @@ class _DeviceMonitorPageState extends State<DeviceMonitorPage> {
     final label = _windowLabel(seconds);
     final selected = _historyWindowSeconds == seconds;
     return ListTile(
+      dense: true,
+      visualDensity: VisualDensity.compact,
+      contentPadding: EdgeInsets.zero,
       title: Text(
         label,
         style: TextStyle(
