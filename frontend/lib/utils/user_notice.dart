@@ -50,7 +50,7 @@ class UserNotice {
       colorText: Colors.white,
       margin: const EdgeInsets.all(12),
       borderRadius: 12,
-      duration: const Duration(seconds: 3),
+      duration: const Duration(milliseconds: 1500),
     );
   }
 }

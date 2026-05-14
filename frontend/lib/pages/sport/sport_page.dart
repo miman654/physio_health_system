@@ -107,6 +107,7 @@ class _SportPageState extends State<SportPage> {
       '已开始$_sportType，请完成后点击结束',
       backgroundColor: Colors.green.withValues(alpha: 0.75),
       colorText: Colors.black,
+      duration: const Duration(milliseconds: 1500),
     );
   }
 

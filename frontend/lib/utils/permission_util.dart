@@ -12,7 +12,8 @@ class PermissionUtil {
       return true;
     }
 
-    Get.snackbar("提示", "正在申请必要权限...", colorText: Colors.white);
+    Get.snackbar("提示", "正在申请必要权限...",
+        colorText: Colors.white, duration: const Duration(milliseconds: 1500));
     // 申请权限组
     Map<Permission, PermissionStatus> statuses = await [
       Permission.storage, // 本地数据存储
@@ -23,7 +24,8 @@ class PermissionUtil {
     statuses.forEach((Permission perm, PermissionStatus status) {
       if (status != PermissionStatus.granted) {
         Get.snackbar("权限不足", "${_getPermName(perm)}权限未授予，部分功能无法使用",
-            colorText: Colors.white);
+            colorText: Colors.white,
+            duration: const Duration(milliseconds: 1500));
         isAllGranted = false;
       }
     });
@@ -31,7 +33,8 @@ class PermissionUtil {
     if (isAllGranted) {
       Get.snackbar("成功", "所有必要权限已授予",
           backgroundColor: Colors.green.withOpacity(0.7),
-          colorText: Colors.white);
+          colorText: Colors.white,
+          duration: const Duration(milliseconds: 1500));
     }
     return isAllGranted;
   }

@@ -144,7 +144,8 @@ class _SleepPageState extends State<SleepPage> with TickerProviderStateMixin {
     });
 
     if (resp["code"] == 200) {
-      Get.snackbar('上传成功', '睡眠记录已上传');
+      Get.snackbar('上传成功', '睡眠记录已上传',
+          duration: const Duration(milliseconds: 1500));
       _sleepController.endSleep();
 
       // 上传成功后立即查询睡眠记录

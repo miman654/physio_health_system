@@ -364,6 +364,8 @@ class _RegisterPageState extends State<RegisterPage> {
                                           backgroundColor:
                                               Colors.red.withOpacity(0.8),
                                           colorText: Colors.white,
+                                          duration: const Duration(
+                                              milliseconds: 1500),
                                         );
                                         return;
                                       }
@@ -385,6 +387,8 @@ class _RegisterPageState extends State<RegisterPage> {
                                       backgroundColor:
                                           Colors.red.withOpacity(0.8),
                                       colorText: Colors.white,
+                                      duration:
+                                          const Duration(milliseconds: 1500),
                                     );
                                   }
                                 : null,

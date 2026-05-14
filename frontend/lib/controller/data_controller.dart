@@ -217,13 +217,15 @@ class DataController extends GetxController {
     if (result["code"] == 200) {
       Get.snackbar("成功", result["msg"] ?? "生理数据上传成功",
           backgroundColor: Colors.green.withOpacity(0.7),
-          colorText: Colors.white);
+          colorText: Colors.white,
+          duration: const Duration(milliseconds: 1500));
       await queryPhysioData(); // 上传成功后刷新列表
       await startRealtimePhysioStream();
     } else {
       Get.snackbar("上传失败", result["msg"] ?? "请稍后重试",
           backgroundColor: Colors.red.withOpacity(0.7),
-          colorText: Colors.white);
+          colorText: Colors.white,
+          duration: const Duration(milliseconds: 1500));
     }
   }
 
@@ -232,7 +234,9 @@ class DataController extends GetxController {
     int userId = await _getCurrentUserId();
     if (userId == 0) {
       Get.snackbar("提示", "请先登录",
-          backgroundColor: Colors.orange, colorText: Colors.white);
+          backgroundColor: Colors.orange,
+          colorText: Colors.white,
+          duration: const Duration(milliseconds: 1500));
       return;
     }
 
@@ -255,12 +259,14 @@ class DataController extends GetxController {
     if (result["code"] == 200) {
       Get.snackbar("成功", result["msg"] ?? "睡眠记录上传成功",
           backgroundColor: Colors.green.withOpacity(0.7),
-          colorText: Colors.white);
+          colorText: Colors.white,
+          duration: const Duration(milliseconds: 1500));
       await querySleepRecord(); // 上传成功后刷新列表
     } else {
       Get.snackbar("上传失败", result["msg"] ?? "请检查时间格式",
           backgroundColor: Colors.red.withOpacity(0.7),
-          colorText: Colors.white);
+          colorText: Colors.white,
+          duration: const Duration(milliseconds: 1500));
     }
   }
 
@@ -304,7 +310,8 @@ class DataController extends GetxController {
     } else {
       Get.snackbar("上传失败", result["msg"] ?? "请检查运动类型或时间格式",
           backgroundColor: Colors.red.withOpacity(0.7),
-          colorText: Colors.white);
+          colorText: Colors.white,
+          duration: const Duration(milliseconds: 1500));
       return null;
     }
   }
@@ -314,7 +321,9 @@ class DataController extends GetxController {
     int userId = await _getCurrentUserId();
     if (userId == 0) {
       Get.snackbar("提示", "请先登录",
-          backgroundColor: Colors.orange, colorText: Colors.white);
+          backgroundColor: Colors.orange,
+          colorText: Colors.white,
+          duration: const Duration(milliseconds: 1500));
       return;
     }
 
@@ -340,7 +349,9 @@ class DataController extends GetxController {
     int userId = await _getCurrentUserId();
     if (userId == 0) {
       Get.snackbar("提示", "请先登录",
-          backgroundColor: Colors.orange, colorText: Colors.white);
+          backgroundColor: Colors.orange,
+          colorText: Colors.white,
+          duration: const Duration(milliseconds: 1500));
       return null;
     }
 
@@ -370,7 +381,9 @@ class DataController extends GetxController {
     int userId = await _getCurrentUserId();
     if (userId == 0) {
       Get.snackbar("提示", "请先登录",
-          backgroundColor: Colors.orange, colorText: Colors.white);
+          backgroundColor: Colors.orange,
+          colorText: Colors.white,
+          duration: const Duration(milliseconds: 1500));
       return;
     }
 
@@ -417,11 +430,13 @@ class DataController extends GetxController {
 
       Get.snackbar("营养建议", "获取成功",
           backgroundColor: Colors.green.withOpacity(0.7),
-          colorText: Colors.white);
+          colorText: Colors.white,
+          duration: const Duration(milliseconds: 1500));
     } else {
       Get.snackbar("获取失败", result["msg"] ?? "请稍后重试",
           backgroundColor: Colors.red.withOpacity(0.7),
-          colorText: Colors.white);
+          colorText: Colors.white,
+          duration: const Duration(milliseconds: 1500));
     }
   }
 

@@ -85,7 +85,9 @@ class AuthController extends GetxController {
     // 表单校验
     if (username.trim().isEmpty || password.trim().isEmpty) {
       Get.snackbar("提示", "用户名和密码不能为空",
-          backgroundColor: Colors.orange, colorText: Colors.white);
+          backgroundColor: Colors.orange,
+          colorText: Colors.white,
+          duration: const Duration(milliseconds: 1500));
       return false;
     }
 
@@ -141,7 +143,8 @@ class AuthController extends GetxController {
       }
       Get.snackbar("登录失败", errorMsg,
           backgroundColor: Colors.red.withOpacity(0.8),
-          colorText: Colors.white);
+          colorText: Colors.white,
+          duration: const Duration(milliseconds: 1500));
       return false;
     }
   }
@@ -157,7 +160,9 @@ class AuthController extends GetxController {
     if (params["username"].trim().isEmpty ||
         params["password"].trim().isEmpty) {
       Get.snackbar("提示", "用户名和密码不能为空",
-          backgroundColor: Colors.orange, colorText: Colors.white);
+          backgroundColor: Colors.orange,
+          colorText: Colors.white,
+          duration: const Duration(milliseconds: 1500));
       return false;
     }
 
@@ -178,7 +183,8 @@ class AuthController extends GetxController {
       } else if (result["code"] == 400) {
         Get.snackbar("注册失败", result["msg"] ?? "用户名已存在",
             backgroundColor: Colors.red.withOpacity(0.8),
-            colorText: Colors.white);
+            colorText: Colors.white,
+            duration: const Duration(milliseconds: 1500));
         return false;
       }
 
@@ -213,7 +219,9 @@ class AuthController extends GetxController {
     }
 
     Get.snackbar("资料更新失败", result["msg"] ?? "操作失败，请稍后重试",
-        backgroundColor: Colors.red.withOpacity(0.8), colorText: Colors.white);
+        backgroundColor: Colors.red.withOpacity(0.8),
+        colorText: Colors.white,
+        duration: const Duration(milliseconds: 1500));
     return false;
   }
 
@@ -284,17 +292,21 @@ class AuthController extends GetxController {
       // 显示提示
       if (result["code"] == 200) {
         Get.snackbar("成功", result["msg"] ?? "账号已注销",
-            backgroundColor: Colors.green, colorText: Colors.white);
+            backgroundColor: Colors.green,
+            colorText: Colors.white,
+            duration: const Duration(milliseconds: 1500));
       } else {
         Get.snackbar("注销失败", result["msg"] ?? "操作失败，请稍后重试",
             backgroundColor: Colors.red.withOpacity(0.8),
-            colorText: Colors.white);
+            colorText: Colors.white,
+            duration: const Duration(milliseconds: 1500));
       }
     }).catchError((error) {
       debugPrint("注销账号接口调用失败: $error");
       Get.snackbar("注销失败", "网络错误",
           backgroundColor: Colors.red.withOpacity(0.8),
-          colorText: Colors.white);
+          colorText: Colors.white,
+          duration: const Duration(milliseconds: 1500));
     });
   }
 }
