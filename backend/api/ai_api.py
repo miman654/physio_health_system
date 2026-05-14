@@ -9,8 +9,14 @@ router = APIRouter()
 # ==================== AI健康分析接口 ====================
 # 查询用户AI生理数据分析
 @router.get("/physio/analysis")
-async def ai_physio_analysis(user_id: int = Query(..., description="用户ID")):
-    result = ai_physio_analysis_service(user_id=user_id)
+async def ai_physio_analysis(
+    user_id: int = Query(..., description="用户ID"),
+    analysis_type: str = Query("overview", description="分析类型：recent 或 overview"),
+    recent_hours: int = Query(2, ge=1, le=24, description="最近分析窗口（小时）"),
+):
+    result = ai_physio_analysis_service(
+        user_id=user_id, analysis_type=analysis_type, recent_hours=recent_hours
+    )
 
     # 检查返回状态
     if result["status"] == "error":

@@ -2,6 +2,7 @@
 import datetime
 from repository.physio_repo import (
     get_physio_data_by_user,
+    get_physio_data_by_user_in_range,
     get_sleep_record_by_user,
     get_sport_record_by_user,
 )
@@ -20,8 +21,60 @@ def _get_duration_minutes(start_time, end_time):
         return 30  # 默认30分钟
 
 
+def _build_physio_snapshot_text(records):
+    if not records:
+        return "【最近生理数据】暂无生理数据"
+
+    latest = records[0]
+    values = []
+    heart_rates = []
+    spo2_values = []
+    temps = []
+    for item in records:
+        if item.get("heart_rate") is not None:
+            heart_rates.append(item["heart_rate"])
+        if item.get("spo2") is not None:
+            spo2_values.append(item["spo2"])
+        if item.get("temp") is not None:
+            temps.append(item["temp"])
+
+    scene = "运动中" if latest.get("scene") == 0 else "静息"
+    values.append(
+        f"【最近生理数据】共{len(records)}条，最近一次：心率{latest.get('heart_rate')}bpm，血氧{latest.get('spo2')}%，体温{latest.get('temp')}℃，状态：{scene}"
+    )
+    if heart_rates:
+        avg_hr = round(sum(heart_rates) / len(heart_rates), 1)
+        values.append(f"【统计概览】平均心率{avg_hr}bpm")
+    if spo2_values:
+        avg_spo2 = round(sum(spo2_values) / len(spo2_values), 1)
+        values.append(f"【统计概览】平均血氧{avg_spo2}%")
+    if temps:
+        avg_temp = round(sum(temps) / len(temps), 1)
+        values.append(f"【统计概览】平均体温{avg_temp}℃")
+    values.append(f"【最近记录时间】{latest.get('timestamp')}")
+    return "\n".join(values)
+
+
+def _build_ai_suggestions(prompt, fallback_suggestions, fallback_prefix=""):
+    suggestion = call_deepseek_api(prompt)
+    if suggestion and "AI调用失败" not in suggestion and "AI调用错误" not in suggestion:
+        suggestions = [s.strip() for s in suggestion.split("\n") if s.strip()]
+        while len(suggestions) < 3:
+            suggestions.append(
+                fallback_suggestions[len(suggestions) % len(fallback_suggestions)]
+            )
+    else:
+        suggestions = fallback_suggestions
+
+    if fallback_prefix:
+        suggestions = [f"{fallback_prefix}{item}" for item in suggestions[:3]]
+    return suggestions[:3]
+
+
 # AI生理数据分析 - 结合用户身体情况
-def ai_physio_analysis_service(user_id: int):
+def ai_physio_analysis_service(
+    user_id: int, analysis_type: str = "overview", recent_hours: int = 2
+):
     # 获取用户信息
     user_info = get_user_by_id(user_id)
     if not user_info:
@@ -36,7 +89,17 @@ def ai_physio_analysis_service(user_id: int):
     )
 
     # 获取最新生理数据和睡眠数据
-    physio_data = get_physio_data_by_user(user_id, limit=1)
+    if analysis_type == "recent":
+        end_time = datetime.datetime.now()
+        start_time = end_time - datetime.timedelta(hours=recent_hours)
+        physio_data = get_physio_data_by_user_in_range(
+            user_id,
+            start_time.strftime("%Y-%m-%d %H:%M:%S"),
+            end_time.strftime("%Y-%m-%d %H:%M:%S"),
+            limit=50,
+        )
+    else:
+        physio_data = get_physio_data_by_user(user_id, limit=1)
     sleep_data = get_sleep_record_by_user(user_id, limit=1)
 
     # 准备返回的数据结构
@@ -56,109 +119,84 @@ def ai_physio_analysis_service(user_id: int):
 
     # 构建AI提示词
     prompt_parts = []
-
-    # 添加用户基本信息
     prompt_parts.append(
         f"【用户基本信息】年龄：{user_info['age']}岁，性别：{'男' if user_info['gender'] == '男' else '女'}，体重：{user_info['weight']}kg，身高：{user_info['height']}cm"
     )
     if bmi:
         prompt_parts.append(f"BMI指数：{bmi}")
 
-    # 添加生理数据
     if physio_data:
         latest_physio = physio_data[0]
-        heart_rate = latest_physio["heart_rate"]
-        spo2 = latest_physio["spo2"]
-        temp = latest_physio["temp"]
-        scene = "运动中" if latest_physio["scene"] == 0 else "静息"
-
         response_data["latest_physio"] = {
-            "heart_rate": heart_rate,
-            "spo2": spo2,
-            "temp": temp,
+            "heart_rate": latest_physio["heart_rate"],
+            "spo2": latest_physio["spo2"],
+            "temp": latest_physio["temp"],
             "scene": latest_physio["scene"],
             "timestamp": latest_physio["timestamp"],
         }
+        prompt_parts.append(_build_physio_snapshot_text(physio_data))
 
-        prompt_parts.append(
-            f"【最新生理数据】心率：{heart_rate}bpm，血氧：{spo2}%，体温：{temp}℃，状态：{scene}"
-        )
-
-        # 根据心率生成针对性提示
-        if scene == "运动中" and heart_rate > 140:
-            prompt_parts.append("【重点关注】心率偏高，需要关注运动强度")
-        elif scene == "运动中" and heart_rate > 120:
-            prompt_parts.append("【重点关注】心率略高，建议适当调整运动强度")
-        elif heart_rate > 100:
-            prompt_parts.append("【重点关注】静息心率偏高，需要关注放松和作息")
+        if analysis_type == "recent":
+            prompt_parts.append(
+                "【分析目标】只看最近两小时，输出3条超简短提醒，每条尽量不超过15个字，重点放在当前状态和马上要做什么。"
+            )
         else:
-            prompt_parts.append("【重点关注】心率正常，继续保持")
+            prompt_parts.append(
+                "【分析目标】结合整体健康情况，输出3条较完整建议，每条包含原因、做法和量化指标。"
+            )
     else:
-        prompt_parts.append("【最新生理数据】暂无生理数据")
+        prompt_parts.append("【最近生理数据】暂无生理数据")
 
-    # 添加睡眠数据
     if sleep_data:
         latest_sleep = sleep_data[0]
-        sleep_score = latest_sleep["sleep_score"]
-        deep_sleep = latest_sleep["deep_sleep_duration"]
-        light_sleep = latest_sleep.get("light_sleep_duration")
-        awake_count = latest_sleep.get("awake_count")
-
         response_data["latest_sleep"] = {
-            "sleep_score": sleep_score,
-            "deep_sleep_duration": deep_sleep,
-            "light_sleep_duration": light_sleep,
-            "awake_count": awake_count,
+            "sleep_score": latest_sleep["sleep_score"],
+            "deep_sleep_duration": latest_sleep["deep_sleep_duration"],
+            "light_sleep_duration": latest_sleep.get("light_sleep_duration"),
+            "awake_count": latest_sleep.get("awake_count"),
             "sleep_start": latest_sleep["sleep_start"],
         }
 
-        sleep_metrics_text = [
-            f"睡眠评分：{sleep_score}分",
-            f"深睡时长：{deep_sleep}分钟",
-        ]
-        if light_sleep is not None:
-            sleep_metrics_text.append(f"浅睡时长：{light_sleep}分钟")
-        if awake_count is not None:
-            sleep_metrics_text.append(f"清醒次数：{awake_count}次")
-        sleep_metrics_text.append(f"入睡时间：{latest_sleep['sleep_start']}")
-
-        prompt_parts.append("【最新睡眠数据】" + "，".join(sleep_metrics_text))
-
-        if sleep_score >= 90:
-            prompt_parts.append("【睡眠评价】睡眠质量优秀，继续保持")
-        elif sleep_score >= 70:
-            prompt_parts.append("【睡眠评价】睡眠质量良好，还有提升空间")
-        elif sleep_score >= 60:
-            prompt_parts.append("【睡眠评价】睡眠质量一般，需要改善")
-        else:
-            prompt_parts.append("【睡眠评价】睡眠质量差，需要重点关注")
-    else:
-        prompt_parts.append("【最新睡眠数据】暂无睡眠数据")
-
-    # 构建完整的提示词
-    prompt = "\n".join(prompt_parts)
-    prompt += "\n\n请根据以上用户信息，给出3条具体的健康建议，每句都要包含量化指标。建议格式：1. 运动方面建议 2. 饮食方面建议 3. 作息方面建议"
-
-    # 调用AI接口
-    suggestion = call_deepseek_api(prompt)
-
-    # 处理AI返回的建议
-    if suggestion and "AI调用失败" not in suggestion and "AI调用错误" not in suggestion:
-        # 按行分割建议，去除空行
-        suggestions = [s.strip() for s in suggestion.split("\n") if s.strip()]
-        # 如果建议不足3条，补充默认建议
-        while len(suggestions) < 3:
-            suggestions.append(
-                "建议保持规律作息，每天保证7-8小时睡眠，多摄入蔬菜水果。"
+        if analysis_type != "recent":
+            sleep_score = latest_sleep["sleep_score"]
+            deep_sleep = latest_sleep["deep_sleep_duration"]
+            light_sleep = latest_sleep.get("light_sleep_duration")
+            awake_count = latest_sleep.get("awake_count")
+            sleep_text = (
+                f"【最新睡眠数据】睡眠评分：{sleep_score}分，深睡时长：{deep_sleep}分钟"
             )
+            if light_sleep is not None:
+                sleep_text += f"，浅睡时长：{light_sleep}分钟"
+            if awake_count is not None:
+                sleep_text += f"，清醒次数：{awake_count}次"
+            sleep_text += f"，入睡时间：{latest_sleep['sleep_start']}"
+            prompt_parts.append(sleep_text)
+
+    if analysis_type == "recent":
+        fallback_suggestions = [
+            "总提示：指尖盖住传感器，别漏光。",
+            "要点1：手指保持静止，别晃动。",
+            "要点2：环境光柔和，避开强光。",
+        ]
     else:
-        suggestions = [
-            "根据您的年龄和身体状况，建议每周进行3-5次中等强度运动，每次30-45分钟。",
-            "每日饮水量建议达到2000ml，可适当饮用绿茶，有助于新陈代谢。",
-            "建议23点前入睡，保证7-8小时睡眠，睡前1小时避免使用电子设备。",
+        fallback_suggestions = [
+            "建议每周进行3-5次中等强度运动，每次30-45分钟。",
+            "建议每日饮水2000ml左右，饮食增加蔬菜和优质蛋白。",
+            "建议23点前入睡，保证7-8小时睡眠。",
         ]
 
-    response_data["suggestions"] = suggestions[:3]  # 只保留3条建议
+    prompt = "\n".join(prompt_parts)
+    if analysis_type == "recent":
+        prompt += (
+            "\n\n请只输出3条，每条单独一行："
+            "第1条写1句总提示，第2条和第3条写2条最重要的要点。"
+            "不要加额外解释，不要多于3条。"
+        )
+    else:
+        prompt += "\n\n请根据以上用户信息，给出3条具体的健康建议，每句都要包含量化指标。建议格式：1. 运动方面建议 2. 饮食方面建议 3. 作息方面建议"
+
+    suggestions = _build_ai_suggestions(prompt, fallback_suggestions)
+    response_data["suggestions"] = suggestions[:3]
 
     return {"status": "success", "data": response_data}
 

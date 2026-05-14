@@ -81,7 +81,8 @@ class _AIPageState extends State<AIPage> {
       return;
     }
 
-    final result = await _apiService.aiPhysioAnalysis(userId);
+    final result =
+        await _apiService.aiPhysioAnalysis(userId, analysisType: 'overview');
 
     if (!mounted) return;
     setState(() {

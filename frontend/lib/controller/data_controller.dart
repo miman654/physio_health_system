@@ -366,7 +366,7 @@ class DataController extends GetxController {
   // ********************* AI分析操作 *********************
   // AI生理数据分析（适配接口：返回完整的data对象，包含suggestions数组）
   // AI生理数据分析（适配接口：返回完整的data对象，包含suggestions数组）
-  Future<void> getAiPhysioAnalysis() async {
+  Future<void> getAiPhysioAnalysis({String analysisType = "overview"}) async {
     int userId = await _getCurrentUserId();
     if (userId == 0) {
       Get.snackbar("提示", "请先登录",
@@ -375,7 +375,11 @@ class DataController extends GetxController {
     }
 
     // 不要在这里设置 isLoading，因为已经在 refreshAllData 中设置了
-    var result = await _apiService.aiPhysioAnalysis(userId);
+    var result = await _apiService.aiPhysioAnalysis(
+      userId,
+      analysisType: analysisType,
+      recentHours: 2,
+    );
 
     if (result["code"] == 200) {
       Map<String, dynamic> data = result["data"] ?? {};
@@ -435,7 +439,7 @@ class DataController extends GetxController {
         queryPhysioData(),
         querySleepRecord(),
         querySportRecord(),
-        getAiPhysioAnalysis(), // 这个可能失败，但不影响其他数据
+        getAiPhysioAnalysis(analysisType: "recent"), // 首页只看最近两小时
       ]);
       await startRealtimePhysioStream();
     } catch (e) {

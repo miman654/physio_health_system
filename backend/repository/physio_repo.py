@@ -44,6 +44,23 @@ def get_physio_data_by_user(user_id: int, limit: int = 10):
     return [dict(item) for item in data]
 
 
+def get_physio_data_by_user_in_range(
+    user_id: int, start_time: str, end_time: str, limit: int = 50
+):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """SELECT id, user_id, heart_rate, spo2, temp, scene, timestamp, suggestion 
+        FROM physio_data 
+        WHERE user_id=? AND timestamp >= ? AND timestamp < ? 
+        ORDER BY timestamp DESC LIMIT ?""",
+        (user_id, start_time, end_time, limit),
+    )
+    data = cursor.fetchall()
+    conn.close()
+    return [dict(item) for item in data]
+
+
 # 插入睡眠记录（修改后）
 def insert_sleep_record(
     user_id: int,

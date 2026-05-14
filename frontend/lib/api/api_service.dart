@@ -363,11 +363,19 @@ class ApiService {
 
   // ********************* 五、AI分析接口 *********************
 // AI生理数据分析 /ai/physio/analysis
-  Future<Map<String, dynamic>> aiPhysioAnalysis(int userId) async {
+  Future<Map<String, dynamic>> aiPhysioAnalysis(
+    int userId, {
+    String analysisType = "overview",
+    int recentHours = 2,
+  }) async {
     try {
       final response = await _dio.get(
         "/ai/physio/analysis",
-        queryParameters: {"user_id": userId},
+        queryParameters: {
+          "user_id": userId,
+          "analysis_type": analysisType,
+          "recent_hours": recentHours,
+        },
       );
       return response.data;
     } on DioException catch (e) {

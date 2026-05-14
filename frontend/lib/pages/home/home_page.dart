@@ -136,7 +136,7 @@ class _HomePageState extends State<HomePage> {
                       subtitle: '实时来自后端的最新有效数据',
                     );
                   }),
-                  // 离线时在首页 RealtimePhysioCard 外部显示提示卡片（白底粉框）
+                  // 离线时在首页实时卡片下面、AI建议上面显示提示卡片
                   Obx(() {
                     final latest = dataCtrl.realtimePhysioSnapshot.isNotEmpty
                         ? Map<String, dynamic>.from(
@@ -256,6 +256,7 @@ class _HomePageState extends State<HomePage> {
                       ),
                     );
                   }),
+                  const SizedBox(height: 10),
                 ],
               ),
             ),
