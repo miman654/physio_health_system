@@ -202,186 +202,201 @@ class _ProfileWizardPageState extends State<ProfileWizardPage> {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(42, 30, 42, 8),
-              child: Row(children: _buildStepIndicators()),
-            ),
-            const SizedBox(height: 22),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 28),
-              child: Text(
-                widget.title,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 26,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.textTitle,
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-            _buildUnitToggle(),
-            const SizedBox(height: 16),
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 22),
-              padding: const EdgeInsets.fromLTRB(14, 24, 14, 18),
-              decoration: BoxDecoration(
-                color: AppColors.background,
-                border: Border.all(color: AppColors.border),
-                borderRadius: BorderRadius.circular(34),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.border.withOpacity(0.5),
-                    blurRadius: 8,
-                    spreadRadius: 2,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  SizedBox(
-                    height: 70,
-                    child: Center(
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: IntrinsicHeight(
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(42, 30, 42, 8),
+                        child: Row(children: _buildStepIndicators()),
+                      ),
+                      const SizedBox(height: 22),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 28),
                         child: Text(
-                          _displayValueText(),
+                          widget.title,
+                          textAlign: TextAlign.center,
                           style: const TextStyle(
-                            fontSize: 50,
-                            fontWeight: FontWeight.w900,
-                            height: 1,
+                            fontSize: 26,
+                            fontWeight: FontWeight.w800,
                             color: AppColors.textTitle,
                           ),
                         ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  SizedBox(
-                    height: 132,
-                    child: RotatedBox(
-                      quarterTurns: 3,
-                      child: CupertinoPicker(
-                        scrollController: _pickerController,
-                        backgroundColor: Colors.transparent,
-                        magnification: 1.08,
-                        useMagnifier: true,
-                        itemExtent: 64,
-                        onSelectedItemChanged: (index) {
-                          setState(() {
-                            _selectedIntegerValue = widget.minValue + index;
-                            if (_usesDecimalPicker &&
-                                _selectedIntegerValue >= widget.maxValue) {
-                              _selectedDecimalValue = 0;
-                              _decimalPickerController?.jumpToItem(0);
-                            }
-                          });
-                        },
-                        children: List.generate(
-                          widget.maxValue - widget.minValue + 1,
-                          (index) {
-                            final value = widget.minValue + index;
-                            final selected = value == _selectedIntegerValue;
-                            return RotatedBox(
-                              quarterTurns: 1,
+                      const SizedBox(height: 24),
+                      _buildUnitToggle(),
+                      const SizedBox(height: 16),
+                      Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 22),
+                        padding: const EdgeInsets.fromLTRB(14, 24, 14, 18),
+                        decoration: BoxDecoration(
+                          color: AppColors.background,
+                          border: Border.all(color: AppColors.border),
+                          borderRadius: BorderRadius.circular(34),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppColors.border.withOpacity(0.5),
+                              blurRadius: 8,
+                              spreadRadius: 2,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          children: [
+                            SizedBox(
+                              height: 70,
                               child: Center(
-                                child: Text(
-                                  value.toString(),
-                                  style: TextStyle(
-                                    fontSize: selected ? 30 : 20,
-                                    fontWeight: selected
-                                        ? FontWeight.w800
-                                        : FontWeight.w400,
-                                    color: selected
-                                        ? AppColors.textTitle
-                                        : AppColors.textTip,
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(
+                                    _displayValueText(),
+                                    style: const TextStyle(
+                                      fontSize: 50,
+                                      fontWeight: FontWeight.w900,
+                                      height: 1,
+                                      color: AppColors.textTitle,
+                                    ),
                                   ),
                                 ),
                               ),
-                            );
-                          },
-                        ),
-                      ),
-                    ),
-                  ),
-                  _buildDecimalPicker(),
-                  Text(
-                    widget.unit,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textBody,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Spacer(),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 66,
-                    height: 66,
-                    child: OutlinedButton(
-                      onPressed: () => _goBack(context),
-                      style: OutlinedButton.styleFrom(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        side: const BorderSide(color: AppColors.border),
-                        backgroundColor: AppColors.card,
-                      ),
-                      child: const Icon(
-                        Icons.arrow_back_ios_new,
-                        color: AppColors.textTitle,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: SizedBox(
-                      height: 66,
-                      child: ElevatedButton(
-                        onPressed: _goNext,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primaryLight,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(18),
-                          ),
-                          elevation: 0,
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              widget.isFinalStep ? '立即开始' : '下一个',
-                              style: const TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w800,
-                                color: AppColors.textTitle,
+                            ),
+                            const SizedBox(height: 4),
+                            SizedBox(
+                              height: 132,
+                              child: RotatedBox(
+                                quarterTurns: 3,
+                                child: CupertinoPicker(
+                                  scrollController: _pickerController,
+                                  backgroundColor: Colors.transparent,
+                                  magnification: 1.08,
+                                  useMagnifier: true,
+                                  itemExtent: 64,
+                                  onSelectedItemChanged: (index) {
+                                    setState(() {
+                                      _selectedIntegerValue =
+                                          widget.minValue + index;
+                                      if (_usesDecimalPicker &&
+                                          _selectedIntegerValue >=
+                                              widget.maxValue) {
+                                        _selectedDecimalValue = 0;
+                                        _decimalPickerController?.jumpToItem(0);
+                                      }
+                                    });
+                                  },
+                                  children: List.generate(
+                                    widget.maxValue - widget.minValue + 1,
+                                    (index) {
+                                      final value = widget.minValue + index;
+                                      final selected =
+                                          value == _selectedIntegerValue;
+                                      return RotatedBox(
+                                        quarterTurns: 1,
+                                        child: Center(
+                                          child: Text(
+                                            value.toString(),
+                                            style: TextStyle(
+                                              fontSize: selected ? 30 : 20,
+                                              fontWeight: selected
+                                                  ? FontWeight.w800
+                                                  : FontWeight.w400,
+                                              color: selected
+                                                  ? AppColors.textTitle
+                                                  : AppColors.textTip,
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
                               ),
                             ),
-                            const SizedBox(width: 10),
-                            Icon(
-                              widget.isFinalStep
-                                  ? Icons.check
-                                  : Icons.double_arrow,
-                              color: AppColors.textBody,
+                            _buildDecimalPicker(),
+                            Text(
+                              widget.unit,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.textBody,
+                              ),
                             ),
                           ],
                         ),
                       ),
-                    ),
+                      const Spacer(),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: 66,
+                              height: 66,
+                              child: OutlinedButton(
+                                onPressed: () => _goBack(context),
+                                style: OutlinedButton.styleFrom(
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(18),
+                                  ),
+                                  side:
+                                      const BorderSide(color: AppColors.border),
+                                  backgroundColor: AppColors.card,
+                                ),
+                                child: const Icon(
+                                  Icons.arrow_back_ios_new,
+                                  color: AppColors.textTitle,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: SizedBox(
+                                height: 66,
+                                child: ElevatedButton(
+                                  onPressed: _goNext,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppColors.primaryLight,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(18),
+                                    ),
+                                    elevation: 0,
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        widget.isFinalStep ? '立即开始' : '下一个',
+                                        style: const TextStyle(
+                                          fontSize: 22,
+                                          fontWeight: FontWeight.w800,
+                                          color: AppColors.textTitle,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Icon(
+                                        widget.isFinalStep
+                                            ? Icons.check
+                                            : Icons.double_arrow,
+                                        color: AppColors.textBody,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
-            ),
-          ],
+            );
+          },
         ),
       ),
     );

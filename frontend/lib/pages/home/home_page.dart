@@ -74,6 +74,37 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        backgroundColor: AppColors.primaryLight,
+        elevation: 0,
+        centerTitle: false,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '健康管家',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)
+                  .copyWith(color: AppColors.textTitle),
+            ),
+            Text(
+              '关注你的每日健康',
+              style: const TextStyle(fontSize: 12)
+                  .copyWith(color: AppColors.textBody),
+            ),
+          ],
+        ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 12.0, top: 6, bottom: 6),
+            child: Center(
+              child: Text(
+                '${DateTime.now().year}-${DateTime.now().month.toString().padLeft(2, '0')}-${DateTime.now().day.toString().padLeft(2, '0')}',
+                style: TextStyle(color: AppColors.textTip, fontSize: 12),
+              ),
+            ),
+          ),
+        ],
+      ),
       backgroundColor: AppColors.background,
       body: Stack(
         children: [
@@ -256,6 +287,35 @@ class _HomePageState extends State<HomePage> {
                       ),
                     );
                   }),
+                  const SizedBox(height: 12),
+                  // 快捷操作：仅保留按钮，不再显示外层卡片框
+                  Padding(
+                    padding:
+                        const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        ElevatedButton.icon(
+                          onPressed: () => Get.toNamed('/device-monitor'),
+                          icon: const Icon(Icons.health_and_safety),
+                          label: const Text('开始测量'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                          ),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: () => Get.toNamed('/ai'),
+                          icon: const Icon(Icons.article),
+                          label: const Text('报告'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.primaryDark,
+                            side:
+                                const BorderSide(color: AppColors.primaryLight),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                   const SizedBox(height: 10),
                 ],
               ),

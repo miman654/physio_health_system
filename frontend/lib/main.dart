@@ -106,7 +106,7 @@ class MyApp extends StatelessWidget {
           name: "/register/height",
           page: () => const ProfileWizardPage(
             stepIndex: 1,
-            title: '你身高多少?',
+            title: '你的身高是多少?',
             unit: '厘米',
             minValue: 100,
             maxValue: 220,
