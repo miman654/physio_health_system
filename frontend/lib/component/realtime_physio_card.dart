@@ -22,9 +22,9 @@ class RealtimePhysioCard extends StatefulWidget {
 class _RealtimePhysioCardState extends State<RealtimePhysioCard> {
   late DateTime _now;
   Timer? _timer;
-  DateTime? _contactResumedAt;
+  static final Map<String, DateTime> _contactResumedAtByDevice = {};
 
-  static const Duration _collectingWindow = Duration(seconds: 15);
+  static const Duration _collectingWindow = Duration(seconds: 10);
 
   @override
   void initState() {
@@ -280,22 +280,38 @@ class _RealtimePhysioCardState extends State<RealtimePhysioCard> {
 
   void _syncContactTiming(
       Map<String, dynamic>? oldLatest, Map<String, dynamic>? latest) {
-    final oldReason = _reasonFromSnapshot(oldLatest);
+    final deviceId = _deviceKey(latest ?? oldLatest);
     final newReason = _reasonFromSnapshot(latest);
 
+    if (deviceId.isEmpty) {
+      return;
+    }
+
     if (latest == null) {
-      _contactResumedAt = null;
       return;
     }
 
     if (newReason == 'no_contact') {
-      _contactResumedAt = null;
+      _contactResumedAtByDevice.remove(deviceId);
       return;
     }
 
-    if (oldReason == 'no_contact' || _contactResumedAt == null) {
-      _contactResumedAt = DateTime.now();
+    _contactResumedAtByDevice.putIfAbsent(deviceId, DateTime.now);
+
+    if (_reasonFromSnapshot(oldLatest) == 'no_contact') {
+      _contactResumedAtByDevice[deviceId] = DateTime.now();
     }
+  }
+
+  DateTime? get _contactResumedAt =>
+      _contactResumedAtByDevice[_deviceKey(widget.latest)];
+
+  String _deviceKey(Map<String, dynamic>? snapshot) {
+    final deviceId = snapshot?['device_id']?.toString().trim();
+    if (deviceId != null && deviceId.isNotEmpty) {
+      return deviceId;
+    }
+    return '__default_device__';
   }
 
   String _reasonFromSnapshot(Map<String, dynamic>? snapshot) {
