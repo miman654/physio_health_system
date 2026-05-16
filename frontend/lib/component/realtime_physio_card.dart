@@ -22,17 +22,27 @@ class RealtimePhysioCard extends StatefulWidget {
 class _RealtimePhysioCardState extends State<RealtimePhysioCard> {
   late DateTime _now;
   Timer? _timer;
+  DateTime? _contactResumedAt;
+
+  static const Duration _collectingWindow = Duration(seconds: 15);
 
   @override
   void initState() {
     super.initState();
     _now = DateTime.now();
+    _syncContactTiming(null, widget.latest);
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       setState(() {
         _now = DateTime.now();
       });
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant RealtimePhysioCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _syncContactTiming(oldWidget.latest, widget.latest);
   }
 
   @override
@@ -165,27 +175,28 @@ class _RealtimePhysioCardState extends State<RealtimePhysioCard> {
   }
 
   String get _displayHeartRate {
-    if (_isOffline || _isInvalid('valid_heart_rate')) return '--';
+    if (_isHardOffline || _collecting || _isNoContact) return '--';
     final value = widget.latest?['heart_rate'];
     return _formatNumber(value, decimals: 0);
   }
 
   String get _displaySpo2 {
-    if (_isOffline || _isInvalid('valid_spo2')) return '--';
+    if (_isHardOffline || _collecting || _isNoContact) return '--';
     final value = widget.latest?['spo2'];
     return _formatNumber(value, decimals: 1);
   }
 
   String get _displayTemp {
-    if (_isInvalid('valid_temp')) return '--';
+    if (_isHardOffline) return '--';
     final value = widget.latest?['temp'];
     return _formatNumber(value, decimals: 1);
   }
 
   String get _statusText {
-    if (_isOffline) return '离线';
+    if (_isHardOffline || _isNoContact) return '离线';
     if (_collecting) return '采集中';
-    return '正常';
+    if (_isSignalGood) return '正常';
+    return _hasRealtimeData ? '信号差' : '离线';
   }
 
   Color get _statusColor {
@@ -194,17 +205,25 @@ class _RealtimePhysioCardState extends State<RealtimePhysioCard> {
         return Colors.grey;
       case '采集中':
         return Colors.orange;
+      case '信号差':
+        return Colors.red;
       default:
         return Colors.green;
     }
   }
 
   String get _hintText {
-    if (_statusText == '离线') {
-      return '暂无实时数据，请稍后再查看';
+    if (_isHardOffline) {
+      return '暂无实时数据，请检查后端或硬件连接';
+    }
+    if (_isNoContact) {
+      return '手指未放到 MAX30102，心率和血氧暂不显示';
     }
     if (_statusText == '采集中') {
-      return '数据正在更新中，请继续保持当前状态';
+      return '请保持手指稳定，等待采集完成';
+    }
+    if (_statusText == '信号差') {
+      return '信号较弱，请重新调整手指位置';
     }
     return '数据稳定，可继续观察实时变化';
   }
@@ -214,21 +233,81 @@ class _RealtimePhysioCardState extends State<RealtimePhysioCard> {
     return "${_now.year}-${pad(_now.month)}-${pad(_now.day)} ${pad(_now.hour)}:${pad(_now.minute)}:${pad(_now.second)}";
   }
 
-  bool get _isOffline =>
-      widget.latest == null || widget.latest?['contact'] == 0;
+  bool get _hasRealtimeData => widget.latest != null;
 
-  bool get _collecting {
-    if (_isOffline) return false;
-    final raw = widget.latest?['status_text']?.toString();
-    if (raw != null && raw.isNotEmpty) {
-      return raw == '采集中';
-    }
-    return widget.latest?['contact'] == 1;
+  bool get _isHardOffline => widget.latest == null;
+
+  bool get _isNoContact {
+    final reason = _reasonText;
+    return reason == 'no_contact' || widget.latest?['contact'] == 0;
   }
 
-  bool _isInvalid(String key) {
-    final flag = widget.latest?[key];
-    return flag == 0 || flag == false;
+  bool get _collecting {
+    if (_isHardOffline || _isNoContact) return false;
+    final startAt = _contactResumedAt;
+    if (startAt == null) return false;
+    return DateTime.now().difference(startAt) < _collectingWindow;
+  }
+
+  bool get _isSignalGood {
+    final latest = widget.latest;
+    if (latest == null || _isNoContact || _collecting) return false;
+
+    final contact = latest['contact'];
+    final signal = _asDouble(latest['signal']);
+    final heartRate = _asDouble(latest['heart_rate']);
+    final spo2 = _asDouble(latest['spo2']);
+    final validHeartRate = latest['valid_heart_rate'];
+    final validSpo2 = latest['valid_spo2'];
+
+    return contact == 1 &&
+        signal != null &&
+        signal >= 0.75 &&
+        (validHeartRate == 1 || validHeartRate == true) &&
+        (validSpo2 == 1 || validSpo2 == true) &&
+        heartRate != null &&
+        heartRate >= 50 &&
+        heartRate <= 120 &&
+        spo2 != null &&
+        spo2 >= 80 &&
+        spo2 <= 100;
+  }
+
+  String get _reasonText {
+    final raw = widget.latest?['reason'] ?? widget.latest?['status_text'];
+    return raw?.toString() ?? '';
+  }
+
+  void _syncContactTiming(
+      Map<String, dynamic>? oldLatest, Map<String, dynamic>? latest) {
+    final oldReason = _reasonFromSnapshot(oldLatest);
+    final newReason = _reasonFromSnapshot(latest);
+
+    if (latest == null) {
+      _contactResumedAt = null;
+      return;
+    }
+
+    if (newReason == 'no_contact') {
+      _contactResumedAt = null;
+      return;
+    }
+
+    if (oldReason == 'no_contact' || _contactResumedAt == null) {
+      _contactResumedAt = DateTime.now();
+    }
+  }
+
+  String _reasonFromSnapshot(Map<String, dynamic>? snapshot) {
+    final raw = snapshot?['reason'] ?? snapshot?['status_text'];
+    return raw?.toString() ?? '';
+  }
+
+  double? _asDouble(dynamic value) {
+    if (value == null) return null;
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    return double.tryParse(value.toString());
   }
 
   String _formatNumber(dynamic value, {required int decimals}) {

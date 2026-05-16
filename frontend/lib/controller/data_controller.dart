@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../api/api_service.dart';
 import '../api/ws_service.dart';
 import 'package:flutter/material.dart';
+import '../utils/user_notice.dart';
 
 class DataController extends GetxController {
   final ApiService _apiService = ApiService();
@@ -40,6 +41,16 @@ class DataController extends GetxController {
       if (_shouldApplyRealtimeSnapshot(normalized)) {
         realtimePhysioSnapshot.value = normalized;
       }
+      return;
+    }
+
+    if (result["code"] == 200 ||
+        result["code"] == 404 ||
+        result["code"] == 500) {
+      realtimePhysioSnapshot.clear();
+      UserNotice.showBackendUnavailable(
+        message: result["msg"]?.toString() ?? '当前未收到实时数据，请检查后端或硬件',
+      );
     }
   }
 

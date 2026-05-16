@@ -173,7 +173,9 @@ class _HomePageState extends State<HomePage> {
                         ? Map<String, dynamic>.from(
                             dataCtrl.realtimePhysioSnapshot)
                         : null;
-                    final isOffline = latest == null || latest['contact'] == 0;
+                    final isOffline = latest == null ||
+                        latest['contact'] == 0 ||
+                        latest['reason']?.toString() == 'no_contact';
                     if (!isOffline) return const SizedBox.shrink();
                     return Padding(
                       padding: const EdgeInsets.only(top: 10, bottom: 6),
